@@ -73,6 +73,18 @@ textarea{min-height:70px}
 .vtx{width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid #111}
 .leaflet-container{font:inherit}
 .toast{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:#1d261f;color:#fff;padding:8px 14px;border-radius:99px;font-size:14px;z-index:900;display:none;max-width:80%;text-align:center}
+@media print{
+ body{display:block!important;overflow:visible!important;height:auto!important;background:#fff}
+ header,nav,main{display:none!important}
+ #printArea{display:block!important;color:#000;font:10.5pt/1.35 Calibri,Arial,sans-serif}
+ #printArea table{border-collapse:collapse;width:100%;margin:8pt 0;page-break-inside:auto}
+ #printArea tr{page-break-inside:avoid}
+ #printArea td,#printArea th{border:1px solid #777;padding:4pt;vertical-align:top;text-align:left;font-size:9pt}
+ #printArea th{background:#e8efe4}
+ #printArea .warn{color:#9a1c1c;font-weight:700}
+ @page{margin:14mm}
+}
+#printArea{display:none}
 </style>
 </head>
 <body>
@@ -96,7 +108,8 @@ textarea{min-height:70px}
  </section>
  <section class="tab" id="tab-plan">
   <div class="row" style="margin-bottom:10px">
-   <button class="btn pri" id="bExportDoc">Export Word (.doc)</button>
+   <button class="btn pri" id="bExportPdf">Save as PDF</button>
+   <button class="btn" id="bExportDoc">Export Word (.doc)</button>
    <button class="btn" id="bRefresh">Refresh from map</button>
   </div>
   <p class="hint">The plan fills in from the species on your map. Cover, density and description cells are editable, and so is any text below. Edits to text are kept until you press Refresh.</p>
@@ -153,6 +166,7 @@ textarea{min-height:70px}
  <button data-t="plan">Plan</button>
  <button data-t="project">Property</button>
 </nav>
+<div id="printArea"></div>
 <input type="file" id="photoIn" accept="image/*" capture="environment" hidden>
 <input type="file" id="photoLib" accept="image/*" multiple hidden>
 
@@ -493,6 +507,13 @@ function download(name,data,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);
 }
 const fname=()=>(P.fields.landowner||P.name||'property').replace(/[^\w\-]+/g,'_');
+$('bExportPdf').onclick=()=>{
+  $('printArea').innerHTML=planForExport()+mapAppendix();
+  document.title='Management Plan - '+fname();
+  toast('Choose "Save as PDF" in the print screen');
+  setTimeout(()=>window.print(),400);
+};
+window.addEventListener('afterprint',()=>{$('printArea').innerHTML='';document.title='Invasives Field Survey'});
 $('bExportDoc').onclick=()=>{
   const css='body{font-family:Calibri,Arial,sans-serif;font-size:10.5pt}table{border-collapse:collapse;width:100%;margin:8pt 0}td,th{border:1px solid #777;padding:4pt;vertical-align:top;text-align:left;font-size:9.5pt}th{background:#e8efe4}.warn{color:#9a1c1c;font-weight:bold}';
   const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Management Plan</title><style>${css}</style></head><body>${planForExport()}${mapAppendix()}</body></html>`;
