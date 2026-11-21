@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2f5d3a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Invasives Field Survey</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{--bg:#f4f5f0;--panel:#ffffff;--ink:#1d261f;--mute:#5d6a60;--line:#d5dad0;--brand:#2f5d3a;--brand2:#e3eedf;--warn:#b3411f;--r:10px}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;overflow:hidden;-webkit-text-size-adjust:100%}
+header{background:var(--brand);color:#fff;padding:calc(8px + env(safe-area-inset-top,0px)) 14px 8px;display:flex;align-items:center;gap:10px}
+header h1{font-size:16px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header small{opacity:.8;font-size:12px}
+nav{display:flex;background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;border:0;background:none;padding:10px 4px;font-size:13px;color:var(--mute);font-weight:600}
+nav button.on{color:var(--brand);box-shadow:inset 0 3px 0 var(--brand)}
+main{flex:1;position:relative;min-height:0}
+.tab{position:absolute;inset:0;overflow:auto;display:none;padding:14px;padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px))}
+.tab.on{display:block}
+#tab-map{padding:0;overflow:hidden}
+#map{position:absolute;inset:0}
+.tools{position:absolute;top:10px;right:10px;z-index:500;display:flex;flex-direction:column;gap:8px}
+.tools button,.fab{width:48px;height:48px;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:20px;box-shadow:0 1px 4px #0003}
+.tools button.on{background:var(--brand);color:#fff}
+.bar{position:absolute;left:10px;right:10px;bottom:10px;z-index:600;background:#fff;border-radius:var(--r);box-shadow:0 2px 10px #0004;padding:10px;display:none;gap:8px;flex-wrap:wrap;align-items:center}
+.bar.on{display:flex}
+.bar .msg{flex:1 1 100%;font-size:14px;color:var(--mute)}
+button.btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:10px 14px;font-size:15px;font-weight:600;color:var(--ink)}
+button.pri{background:var(--brand);border-color:var(--brand);color:#fff}
+button.dng{color:var(--warn)}
+#sheet{position:absolute;left:0;right:0;bottom:0;z-index:700;background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -4px 16px #0004;max-height:68%;overflow:auto;display:none;padding:12px 14px 18px}
+#sheet.on{display:block}
+#sheet h2{font-size:16px;margin:0 0 8px;display:flex;justify-content:space-between;align-items:center}
+label.l{display:block;font-size:12px;font-weight:700;color:var(--mute);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 4px}
+input[type=text],input[type=date],input[type=number],textarea,select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:var(--ink)}
+textarea{min-height:70px}
+.sw{display:flex;gap:8px;flex-wrap:wrap}
+.sw i{width:34px;height:34px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px var(--line);cursor:pointer}
+.sw i.on{box-shadow:0 0 0 3px var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.chip{background:var(--brand2);color:var(--brand);border-radius:99px;padding:4px 10px;font-size:13px;font-weight:600}
+.chip b{margin-left:6px;cursor:pointer}
+.splist{max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:6px}
+.splist div{padding:9px 10px;border-bottom:1px solid var(--line);font-size:14px;display:flex;gap:8px;align-items:center}
+.splist div:last-child{border:0}
+.photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.photos span{position:relative}
+.photos img{width:84px;height:84px;object-fit:cover;border-radius:8px;display:block}
+.photos em{position:absolute;top:2px;right:2px;background:#000a;color:#fff;border-radius:50%;width:22px;height:22px;text-align:center;font-style:normal;line-height:22px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px;margin-bottom:12px}
+.card h3{margin:0 0 8px;font-size:15px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:420px){.grid2{grid-template-columns:1fr}}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.hint{font-size:13px;color:var(--mute)}
+#plan{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:12px;font-size:14px}
+#plan table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px}
+#plan td,#plan th{border:1px solid #999;padding:5px;vertical-align:top;text-align:left}
+#plan th{background:#e8efe4}
+#plan input,#plan select{padding:4px;font-size:13px;width:100%}
+.tblwrap{overflow-x:auto}
+.warn{color:#9a1c1c;font-weight:700}
+.gpsdot{width:16px;height:16px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 1px #1a73e8,0 0 6px #0006}
+.pin{width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px #0007}
+.vtx{width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid #111}
+.leaflet-container{font:inherit}
+.toast{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:#1d261f;color:#fff;padding:8px 14px;border-radius:99px;font-size:14px;z-index:900;display:none;max-width:80%;text-align:center}
+</style>
+</head>
+<body>
+<header><h1 id="ptitle">Invasives Field Survey</h1><small id="gpsstat">GPS off</small></header>
+<main>
+ <section class="tab on" id="tab-map">
+  <div id="map"></div>
+  <div class="toast" id="toast"></div>
+  <div class="tools">
+   <button id="bLocate" title="My location" aria-label="My location">◎</button>
+   <button id="bMarker" title="Add marker" aria-label="Add marker">📍</button>
+   <button id="bPoly" title="Draw polygon" aria-label="Draw polygon">⬠</button>
+   <button id="bLayer" title="Base map" aria-label="Base map">🛰</button>
+  </div>
+  <div class="bar" id="drawbar"></div>
+  <div id="sheet"></div>
+ </section>
+ <section class="tab" id="tab-species">
+  <div class="card"><h3>Species mapped on this property</h3><div id="spsummary" class="hint">Nothing mapped yet.</div></div>
+  <div class="card"><h3>Species reference</h3><input type="text" id="spq" placeholder="Search species or treatment…"><div id="splibrary" style="margin-top:8px"></div></div>
+ </section>
+ <section class="tab" id="tab-plan">
+  <div class="row" style="margin-bottom:10px">
+   <button class="btn pri" id="bExportDoc">Export Word (.doc)</button>
+   <button class="btn" id="bRefresh">Refresh from map</button>
+  </div>
+  <p class="hint">The plan fills in from the species on your map. Cover, density and description cells are editable, and so is any text below. Edits to text are kept until you press Refresh.</p>
+  <div id="plan"></div>
+ </section>
+ <section class="tab" id="tab-project">
+  <div class="card"><h3>Property</h3>
+   <label class="l" for="f_landowner">Landowner</label><input type="text" id="f_landowner">
+   <label class="l" for="f_address">Address</label><input type="text" id="f_address">
+   <div class="grid2">
+    <div><label class="l" for="f_county">County</label><input type="text" id="f_county"></div>
+    <div><label class="l" for="f_area">Area (ac.)</label><input type="text" id="f_area" placeholder="auto from polygons"></div>
+    <div><label class="l" for="f_lat">Latitude</label><input type="text" id="f_lat" placeholder="auto"></div>
+    <div><label class="l" for="f_lon">Longitude</label><input type="text" id="f_lon" placeholder="auto"></div>
+    <div><label class="l" for="f_visit">Site visit date</label><input type="date" id="f_visit"></div>
+    <div><label class="l" for="f_follow">Follow up date</label><input type="date" id="f_follow"></div>
+   </div>
+   <label class="l" for="f_goals">Property goals</label><textarea id="f_goals"></textarea>
+  </div>
+  <div class="card"><h3>Enrolled programs</h3><div id="programs"></div>
+   <label class="l" for="f_otherprog">Other</label><input type="text" id="f_otherprog">
+  </div>
+  <div class="card"><h3>Report credits</h3>
+   <div class="grid2">
+    <div><label class="l" for="f_by">Written by</label><input type="text" id="f_by"></div>
+    <div><label class="l" for="f_assist">Assisted by</label><input type="text" id="f_assist"></div>
+    <div><label class="l" for="f_rdate">Report date</label><input type="date" id="f_rdate"></div>
+    <div><label class="l" for="f_cisma">CISMA</label><input type="text" id="f_cisma"></div>
+    <div><label class="l" for="f_swcd">Soil &amp; Water Conservation District</label><input type="text" id="f_swcd"></div>
+   </div>
+  </div>
+  <div class="card"><h3>Properties</h3>
+   <select id="projsel"></select>
+   <div class="row" style="margin-top:8px">
+    <button class="btn pri" id="bNew">New property</button>
+    <button class="btn dng" id="bDelProj">Delete this one</button>
+   </div>
+  </div>
+  <div class="card"><h3>Backup &amp; export map</h3>
+   <div class="row">
+    <button class="btn" id="bJson">Backup (.json)</button>
+    <button class="btn" id="bImport">Restore</button>
+    <button class="btn" id="bKml">KML (Google My Maps)</button>
+    <button class="btn" id="bGeo">GeoJSON</button>
+   </div>
+   <input type="file" id="importFile" accept=".json,application/json" hidden>
+   <p class="hint">Data is stored on this device. Back up regularly, and before clearing browser data.</p>
+  </div>
+ </section>
+</main>
+<nav>
+ <button data-t="map" class="on">Map</button>
+ <button data-t="species">Species</button>
+ <button data-t="plan">Plan</button>
+ <button data-t="project">Property</button>
+</nav>
+<input type="file" id="photoIn" accept="image/*" capture="environment" hidden>
+<input type="file" id="photoLib" accept="image/*" multiple hidden>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+/* ========================= SPECIES & TREATMENT DATA (from Management Plan template, Dec 2025) ========================= */
+const SH="Foliar Spray";
+const GROUPS=[
+/*0*/{s:["Autumn Olive (Elaeagnus umbellata)","Asian Bush Honeysuckles (Lonicera spp.)","Japanese Barberry (Berberis thunbergii)","Multiflora Rose (Rosa multiflora)","Privet species (Ligustrum spp.)","Winged Burning Bush (Euonymus alatus)","European Spindletree (Euonymus europaeus)","European Cranberrybush (Viburnum opulus)","Japanese Spiraea (Spiraea japonica)","Nonnative Viburnums (Siebold's, Linden, Doublefile) (Viburnum spp.)","Jetbead (Rhodotypos scandens)","Forsythia (Forsythia spp.)","Rose of Sharon (Hibiscus syriacus)","Glossy Buckthorn (Frangula alnus)","Common Buckthorn (Rhamnus cathartica)"],
+ m:"<b>Manual:</b> Pull/dig out small individuals<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant<br><b>Cut Surface:</b> Cut near base and treat with 20% glyphosate and 80% water",
+ t:"<b>Manual:</b> Anytime<br><b>Foliar Spray:</b> May-September<br><b>Cut Surface:</b> June-March. Avoid cut surface in April-May when sap is flowing heavily.",
+ w:"Multiflora rose is an Indiana state-listed noxious weed."},
+/*1*/{s:["Periwinkle (Vinca spp.)","English Ivy (Hedera helix)","Wintercreeper (Euonymus fortunei)"],
+ m:"<b>Manual:</b> Pull out and bag or burn<br><b>Foliar Spray:</b> 2% triclopyr and ½% non-ionic surfactant (waxy leaf: a higher surfactant rate or methylated seed oil helps)",
+ t:"<b>Manual:</b> Anytime<br><b>Foliar Spray:</b> October-March when temperatures are above 50°F",
+ w:"Some people develop contact dermatitis when handling English Ivy and Wintercreeper. Wear gloves, long sleeves and other PPE."},
+/*2*/{s:["Japanese Honeysuckle (Lonicera japonica)"],m:"<b>Manual:</b> Pull/dig out and bag or burn<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",t:"<b>Manual:</b> Anytime<br><b>Foliar Spray:</b> October-March"},
+/*3*/{s:["Non-native Wisteria (Wisteria spp.)"],m:"<b>Manual:</b> Pull/dig out small individuals and bag or burn<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant<br><b>Cut Surface:</b> 20% glyphosate and 80% water",t:"<b>Manual:</b> Before it flowers or sets seed<br><b>Foliar:</b> June-September<br><b>Cut Surface:</b> August-December",w:"Confirm species by bloom time: non-native wisteria flowers March-May and has hairy seedpods; native American wisteria flowers June-August."},
+/*4*/{s:["Shrubby Nonnative Lespedezas (Lespedeza bicolor, L. thunbergii)"],m:"<b>Manual:</b> Pull/dig out small individuals and bag or burn<br><b>Foliar Spray:</b> 2% glyphosate",t:"<b>Manual:</b> Before it flowers or sets seed<br><b>Foliar:</b> July-September",w:"Burning and grazing have limited control and typically promote new growth. Seeds are long lived in the soil."},
+/*5*/{s:["Autumn Clematis / Sweet Autumn Virginsbower (Clematis terniflora)"],m:"<b>Manual:</b> Pull/dig out small patches<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",t:"<b>Manual:</b> Anytime<br><b>Foliar Spray:</b> June-September"},
+/*6*/{s:["Round leaf bittersweet (Celastrus orbiculatus)"],m:"<b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant<br><b>Cut Surface:</b> 30% glyphosate and 70% water",t:"<b>Foliar Spray:</b> June-September<br><b>Cut Surface:</b> August-December",w:"Do not mow or cut back without chemical treatment. Make sure you are not treating native American bittersweet (Celastrus scandens)."},
+/*7*/{s:["Five Leaf Akebia / Chocolate Vine (Akebia quinata)"],m:"<b>Manual:</b> Pull/dig out small individuals and bag or burn<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant<br><b>Cut Surface for climbing vines:</b> 20% glyphosate or triclopyr and 80% water",t:"<b>Manual:</b> Before it flowers or sets seed<br><b>Foliar:</b> June-September<br><b>Cut Surface:</b> October-December when native trees are dormant"},
+/*8*/{s:["Porcelainberry (Ampelopsis brevipedunculata)"],m:"<b>Manual:</b> Pull/dig out small individuals and bag or burn<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant<br><b>Cut Surface:</b> 20% glyphosate or triclopyr and 80% water",t:"<b>Manual:</b> Before it flowers or sets seed<br><b>Foliar:</b> June-August<br><b>Cut Surface:</b> October-December. If on native trees, wait until native trees are dormant."},
+/*9*/{s:["Climbing Yam (Dioscorea polystachya)"],m:"<b>Manual:</b> Pull/dig out small individuals and bag or burn<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",t:"<b>Manual:</b> Before it flowers or sets seed<br><b>Foliar:</b> June-August",w:"Do not burn: this promotes growth of tubers."},
+/*10*/{s:["Wineberry (Rubus phoenicolasius)"],m:"<b>Manual:</b> Pull/dig out small individuals and bag or burn<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",t:"<b>Manual:</b> Before it flowers or sets seed<br><b>Foliar:</b> June-August"},
+/*11*/{s:["Black Swallow-wort (Vincetoxicum nigrum)","Pale Swallow-wort (Vincetoxicum rossicum)"],m:"<b>Manual:</b> Hand-pull/dig out small individuals and bag or burn<br><b>Foliar Spray:</b> 2% glyphosate or triclopyr solution",t:"<b>Manual:</b> Annually, preferably before it flowers or sets seed<br><b>Foliar:</b> June-July",w:"Burning promotes growth; fire will not kill swallow-wort."},
+/*12*/{s:["Japanese hops (Humulus japonicus)"],m:"<b>Manual:</b> Hand-pull small infestations<br><b>Foliar Spray:</b> 2% glyphosate",t:"<b>Manual:</b> Before it flowers or sets seed<br><b>Foliar:</b> June-July",w:"Do not burn: this promotes growth of tubers."},
+/*13*/{s:["Canada Thistle (Cirsium arvense)"],m:"<b>Manual:</b> Mow to prevent seed heads. Dig out individual rosettes in the fall. Small infestations can be eliminated by manual removal.<br><b>Foliar Spray:</b> 2% glyphosate and ½% non-ionic surfactant, or 1% clopyralid and ½% non-ionic surfactant",t:"<b>Manual:</b> Mow during the growing season before seed heads develop<br><b>Foliar Spray:</b> March-October before it sets seed. Most effective: mow during the growing season and foliar spray in October."},
+/*14*/{s:["Bull Thistle (Cirsium vulgare)"],m:"<b>Manual:</b> Cut and bag seed heads; mow (at least twice)<br><b>Foliar Spray:</b> 2% glyphosate and ½% non-ionic surfactant, or 1% clopyralid and ½% non-ionic surfactant",t:"<b>Manual:</b> During growing season<br><b>Foliar Spray:</b> March-October"},
+/*15*/{s:["Crown Vetch (Coronilla varia)"],m:"<b>Manual:</b> Pull/dig out and bag or burn<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",t:"<b>Manual:</b> Anytime<br><b>Foliar Spray:</b> April-May or September-October"},
+/*16*/{s:["Dame's Rocket (Hesperis matronalis)"],m:"<b>Manual:</b> Pull/dig out and bag or dry and burn<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",t:"<b>Manual:</b> Anytime during growing season<br><b>Foliar Spray:</b> March, October-December"},
+/*17*/{s:["Garlic Mustard (Alliaria petiolata)"],m:"<b>Manual:</b> Pull out and bag or burn<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",t:"<b>Manual:</b> Before it sets seed in April/May<br><b>Foliar Spray:</b> February-May, or any time first-year rosettes are present and temperatures are at least 45°F"},
+/*18*/{s:["Japanese Knotweed (Reynoutria japonica)"],m:"<b>Foliar:</b> 1% imazapyr, ½% glyphosate, and ¼% non-ionic surfactant. Cut mature stands back to the ground and foliar spray when new growth reaches a foot or two in height. Repeat annually for at least 3 years.",t:"<b>Foliar:</b> July-October",w:"Very difficult to control in riparian areas."},
+/*19*/{s:["Poison Hemlock (Conium maculatum)"],m:"<b>Foliar Spray:</b> 2% glyphosate or 2-3% triclopyr and ¼% non-ionic surfactant",t:"<b>Foliar Spray:</b> When plant is actively growing. Spray stalks in early spring before flowering (April/May). Spray first-year basal rosettes midsummer through fall.",w:"ALL PARTS OF THIS PLANT ARE POISONOUS TO HUMANS AND ANIMALS. Wear long sleeves, long pants, closed shoes, gloves, eye protection and a facemask. Control with herbicide to minimize contact."},
+/*20*/{s:["Wild Parsnip (Pastinaca sativa)"],m:"<b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",t:"<b>Foliar Spray:</b> Spray rosettes in spring or fall; spray bolting or flowering plants during the growing season",w:"Sap contact with skin in sunlight can cause rashes/blisters (phytophotodermatitis). Wear gloves, long sleeves and pants."},
+/*21*/{s:["Queen Anne's Lace (Daucus carota)"],m:"<b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",t:"<b>Foliar Spray:</b> June-September"},
+/*22*/{s:["Teasel (Cut-leaf and Common) (Dipsacus spp.)"],m:"<b>Manual:</b> Hand-pull/dig out and bag or burn<br><b>Foliar Spray:</b> 1-2% glyphosate or 1-2% triclopyr and ¼% non-ionic surfactant",t:"<b>Manual:</b> Anytime; ideally dig rosettes in winter<br><b>Foliar Spray:</b> Spring (March-April) before flowering, or fall (October-November) to kill basal rosettes"},
+/*23*/{s:["Creeping Charlie (Glechoma hederacea)"],m:"<b>Manual:</b> Hand-pull and bag or burn<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",t:"<b>Manual:</b> Anytime<br><b>Foliar Spray:</b> April-May or September-November"},
+/*24*/{s:["Yellow Floatingheart (Nymphoides peltata)"],m:"<b>Consult Indiana DNR Aquatic Invasive Species Biologist</b>",t:"",aq:1},
+/*25*/{s:["Creeping Jenny (Lysimachia nummularia)","Motherwort (Leonurus cardiaca)","Mugwort (Artemisia vulgaris)","Common Mullein (Verbascum thapsus)","Purple Deadnettle (Lamium purpureum)","Asiatic Dayflower (Commelina communis)","Soapwort (Saponaria officinalis)","Bugleweed (Ajuga reptans)","Yellow Archangel (Lamium galeobdolon)","Burdock (Arctium spp.)","Bittersweet Nightshade (Solanum dulcamara)","Goutweed (Aegopodium podagraria)","Japanese Pachysandra (Pachysandra terminalis)","Field Bindweed (Convolvulus arvensis)","Nonnative Morning Glory (Ipomoea spp.)","Lady's Thumb (Persicaria maculosa)","Oriental Lady's Thumb (Persicaria longiseta)","Common Mallow (Malva neglecta)","Common Chickweed (Stellaria media)","Squill (Scilla siberica)","Prostrate Knotweed (Polygonum aviculare)","Catnip (Nepeta cataria)","Black Medic (Medicago lupulina)","Dalmatian toadflax (Linaria dalmatica)","Oldwoman/Beach Wormwood (Artemisia stellariana)","Tansy Ragwort (Jacobaea vulgaris)"],
+ m:"<b>Manual:</b> Hand-pull before flowering and bag or burn. Pull the entire plant including all root parts, ideally when soil is damp. Mowing is not recommended.<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",
+ t:"<b>Manual:</b> Before it sets seed (several have viable seed as soon as flowering begins). Mowing does not control these species.<br><b>Foliar Spray:</b> During the growing season, June-September (species specific). Do not spray after seed set; herbicide does not affect seed maturation.",
+ w:"Tansy Ragwort is toxic to mammals (deer and livestock)."},
+/*26*/{s:["Yucca (Yucca spp.)"],m:"<b>Manual:</b> Pull/dig out individuals and bag or burn. Remove the entire root system. Clip seed pods before they turn to seed.",t:"<b>Manual:</b> Before it flowers or sets seed"},
+/*27*/{s:["Star-of-Bethlehem (Ornithogalum umbellatum)","Common Daylily (Hemerocallis spp.)","Lily of the Valley (Convallaria majalis)","Common Daffodil (Narcissus pseudonarcissus)"],m:"<b>Manual:</b> Pull/dig out bulbs and surrounding soil (do not compost or dispose where bulbs will resprout). Solarize in black plastic bags if you cannot burn. Bulbs respond poorly to chemical control; expect years of removal.",t:"<b>Manual:</b> Before it flowers or sets seed"},
+/*28*/{s:["Italian arum (Arum italicum)","Beefsteak Plant (Perilla frutescens)"],m:"<b>Manual:</b> Pull/dig out small individuals and bag or burn<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",t:"<b>Manual:</b> Before it flowers or sets seed<br><b>Foliar:</b> June-August",w:"Do not burn: this promotes growth of tubers. There is no effective method to control Italian arum, and it is poisonous. Do not plant."},
+/*29*/{s:["Broadleaved pepperweed (Lepidium latifolium)"],m:"<b>Manual:</b> Pull/dig out small individuals and bag or burn<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",t:"<b>Manual:</b> Before it flowers or sets seed<br><b>Foliar:</b> May-June at flower bud stage",w:"Early detection species for Indiana."},
+/*30*/{s:["Baby's breath (Gypsophila paniculata)"],m:"<b>Manual:</b> Pull/dig out small individuals and bag or burn<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",t:"<b>Manual:</b> Before it flowers or sets seed<br><b>Foliar:</b> June-August"},
+/*31*/{s:["Himalayan balsam (Impatiens glandulifera)"],m:"<b>Manual:</b> Pull/dig out small individuals and bag or burn",t:"<b>Manual:</b> Before it flowers or sets seed",w:"Early detection species for Indiana."},
+/*32*/{s:["Queen of the Meadow (Filipendula ulmaria)"],m:"<b>Manual:</b> Pull/dig out small individuals and bag or burn (remove the entire plant)<br><b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant",t:"<b>Manual:</b> Before it flowers or sets seed<br><b>Foliar:</b> June-July",w:"Early detection species; eradicate if found."},
+/*33*/{s:["Sericea lespedeza (Lespedeza cuneata)"],m:"<b>Manual:</b> Young plants can be hand pulled; older plants have deep taproots.<br><b>Mechanical:</b> Repeated mowing suppresses but will not fully control; combine with herbicide.<br><b>Cultural:</b> Burning alone is not effective (lespedeza responds positively); use to stimulate growth for herbicide follow-up.<br><b>Chemical:</b> Spot treat with 0.4% by volume Pasturegard HL (triclopyr + fluroxypyr) or 1.5-2% triclopyr, with surfactant. Broadcast 12-24 oz/acre Pasturegard HL or 16-24 oz/acre triclopyr. 2,4-D and glyphosate are not as effective.",t:"<b>Manual:</b> Spring/early summer on seedlings<br><b>Mechanical:</b> Mow at flower bud stage before seed set (early to mid-summer); repeat at 12-18 in height<br><b>Cultural:</b> Burn in winter/spring, follow with herbicide in summer<br><b>Chemical:</b> Anytime foliage is present; most effective at flower bud stage",w:"Seeds are long lived in the soil; long-term management needed."},
+/*34*/{s:["Japanese Stiltgrass (Microstegium vimineum)","Wavyleaf Basketgrass (Oplismenus hirtellus ssp. undulatifolius)","Small Carpetgrass (Arthraxon hispidus)"],m:"<b>Manual/Mechanical:</b> Pull to uproot or string trim at ground level<br><b>Chemical:</b> 1% glyphosate and ¼% non-ionic surfactant (or grass-specific herbicide per label)",t:"<b>Manual/Mechanical:</b> June-September (before flowering/seed set; seed begins late August)<br><b>Chemical:</b> Foliar spray June-September",w:"Avoid mowing. Clean equipment and boots to prevent spread; avoid driving through when in seed."},
+/*35*/{s:["Amur Silvergrass (Miscanthus sacchariflorus)","Chinese Silvergrass (Miscanthus sinensis)","Ravenna Grass (Ripidium ravennae)"],m:"<b>Manual:</b> Pull/dig out individuals<br><b>Foliar Spray:</b> 2% glyphosate and ½% non-ionic surfactant. Cut clumps to 6 in, then spray after regrowth reaches 2 ft.",t:"<b>Manual:</b> Any time, but cut and bag seed heads to avoid spreading seed<br><b>Foliar Spray:</b> April-June or August-September"},
+/*36*/{s:["Reed Canary Grass (Phalaris arundinacea)"],m:"<b>Manual:</b> Mow to reduce seed production (can combine with chemical)<br><b>Spring Foliar:</b> 1% imazapyr (aquatic-approved), ½% glyphosate (aquatic-approved), ¼% non-ionic surfactant<br><b>Fall Foliar:</b> 2% glyphosate (aquatic-approved) and ½% non-ionic surfactant",t:"<b>Manual:</b> Mid-June and October<br><b>Spring Foliar:</b> May-June before it flowers<br><b>Fall Foliar:</b> Mid-September until consistent frosts",aq:1},
+/*37*/{s:["Giant Reed (Arundo donax)"],m:"<b>Manual:</b> Pull/dig out small individuals and bag or burn; repeated cuttings<br><b>Foliar Spray:</b> 4% glyphosate and ¼% non-ionic surfactant",t:"<b>Manual:</b> No viable seed; spreads by rhizomes; repeated cutting to ground may eventually kill the plant<br><b>Foliar:</b> July-August",w:"Do not burn. Early detection species for Indiana."},
+/*38*/{s:["Common Reed (Phragmites australis)","Cattail (most likely hybrid) (Typha spp.)"],m:"<b>Manual:</b> Cut down/mow<br><b>Foliar Spray:</b> 1-1.5% imazapyr (aquatic-approved) and ¼% non-ionic surfactant<br><b>Foliar Spray:</b> 1-1.5% glyphosate (aquatic-approved) and ¼% non-ionic surfactant",t:"<b>Manual:</b> Before it sets seed<br><b>Imazapyr:</b> June until first frost<br><b>Glyphosate:</b> Late August until first frost",aq:1},
+/*39*/{s:["Fountain grasses (Pennisetum spp.)"],m:"<b>Manual:</b> Cut down/mow<br><b>Foliar Spray:</b> 1-1.5% imazapyr (aquatic-approved) and ¼% non-ionic surfactant<br><b>Foliar Spray:</b> 1-1.5% glyphosate (aquatic-approved) and ¼% non-ionic surfactant",t:"<b>Manual:</b> Before it sets seed<br><b>Imazapyr:</b> June until first frost<br><b>Glyphosate:</b> Late August until first frost"},
+/*40*/{s:["Yellow groove bamboo (Phyllostachys aureosulcata)"],m:"Cut all stems close to the ground, let it regrow all summer, then spray resprouts in the fall with 1% imazapyr + ½% non-ionic surfactant (may injure nearby trees) or 2% glyphosate + ½% non-ionic surfactant. Repeat annually until dead. Chemicals are ineffective for cut-stump (chambered stems). Digging up is most effective but costly. Small infestations: encircle with a barrier 6-8 in deep and keep cutting back.",t:"Fall for resprout spray; repeat annually"},
+/*41*/{s:["White Mulberry (Morus alba)","Callery Pear (Pyrus calleryana)","Norway Maple (Acer platanoides)","Siberian Elm (Ulmus pumila)","Princess Tree (Paulownia tomentosa)","Amur Corktree (Phellodendron amurense)","Paper Mulberry (Broussonetia papyrifera)","Japanese maple (Acer palmatum), Amur maple (Acer ginnala), Hedge/Field maple (Acer campestre)","Kousa Dogwood (Cornus kousa)","Castor Aralia (Kalopanax septemlobus)","Sawtooth Oak (Quercus acutissima)"],
+ m:"<b>Manual:</b> Pull/dig out small individuals<br><b>Foliar Spray:</b> 2% glyphosate or 2% triclopyr and ¼% non-ionic surfactant (small trees only)<br><b>Cut Surface:</b> Cut near base and treat with 20% glyphosate and 80% water, or 20% triclopyr and 80% water<br><b>Basal Bark:</b> 20-30% triclopyr and 80-70% horticultural/basal oil",
+ t:"<b>Manual:</b> Anytime<br><b>Foliar:</b> May-November (leaves green and attached)<br><b>Cut Surface:</b> June-March (avoid April-May sap flow)<br><b>Basal Bark:</b> July-March; do NOT treat when snow is on the ground. Best in winter at 25°F or warmer.",
+ w:"Work with a certified arborist or forester for tree removal. White mulberry is particularly hard to pull."},
+/*42*/{s:["White Poplar (Populus alba)"],m:"<b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant (small trees only)<br><b>Cut Surface:</b> Cut near base and treat with 20% glyphosate and ¼% imazapyr<br><b>Basal Bark:</b> 20-30% triclopyr and 80-70% horticultural/basal oil",t:"<b>Foliar:</b> June-September<br><b>Cut Surface:</b> June-March<br><b>Basal Bark:</b> June-March; do NOT treat when snow is on the ground"},
+/*43*/{s:["Tree-of-Heaven (Ailanthus altissima)","Black Locust (Robinia pseudoacacia)"],m:"<b>Foliar Spray:</b> 2% glyphosate and ¼% non-ionic surfactant (small trees only)<br><b>Basal Bark:</b> 20-30% triclopyr and 80-70% horticultural/basal oil, 12-18 in around the lower stem",t:"<b>Foliar:</b> June-September<br><b>Basal Bark:</b> June-March; do NOT treat when snow is on the ground",w:"Produce root suckers when damaged. Cut surface treatment may worsen the infestation."},
+/*44*/{s:["Mimosa/Silktree (Albizia julibrissin)"],m:"<b>Manual:</b> Cut down/mow<br><b>Foliar Spray:</b> 1-1.5% imazapyr (aquatic-approved) and ¼% non-ionic surfactant<br><b>Foliar Spray:</b> 1-1.5% glyphosate (aquatic-approved) and ¼% non-ionic surfactant",t:"<b>Manual:</b> Before it sets seed<br><b>Imazapyr:</b> June until first frost<br><b>Glyphosate:</b> Late August until first frost"}
+];
+/* Species on the template's survey list with no treatment row in the template */
+const EXTRA=["Nandina domestica","Highbush cranberry","Japanese snowball","Mockorange","Nonnative raspberry (European raspberry)","Five fingered aralia","Spindle tree","Spiny amaranth","Nodding thistle","Lesser celandine","Japanese Chastetree","Coyrdropsis","Bird's foot trefoil","Grape hyacinth","Monkey grass","Yellow flag iris","Snowdrop (giant and common)","Aconitum","Weeping willow & Corkscrew willow (Salix babylonica & S. matsudana 'tortuosa')","Ginkgo biloba","Osage Orange (Maclura pomifera)","Weeping white mulberry (Morus alba 'pendula')","Japanese lilac (Syringa reticulata)","Japanese painted fern (Athyrium niponicum)","Swordfern (Macrothelypteris torresiana)"];
+const SPECIES=[]; const SPG={};
+GROUPS.forEach((g,i)=>g.s.forEach(n=>{SPECIES.push(n);SPG[n]=i;}));
+EXTRA.forEach(n=>{SPECIES.push(n);SPG[n]=-1;});
+const sortedSpecies=[...SPECIES].sort((a,b)=>a.localeCompare(b));
+const short=n=>n.replace(/\s*\((?=[^()]*\)$).*$/,'').replace(/\)$/,'');
+const COLORS=["#d62728","#ff7f0e","#e6c200","#2ca02c","#17becf","#1f77b4","#9467bd","#e377c2","#7f7f7f","#111111"];
+const PROGRAMS=["EQIP (Environmental Quality Incentives Program)","CRP (Conservation Reserve Program)","CF (Classified Forest)","CRP Grassland","CREP (Conservation Reserve Enhancement Program)"];
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $=id=>document.getElementById(id);
+
+/* ========================= STORAGE (IndexedDB) ========================= */
+let db;
+function idb(){return new Promise((res,rej)=>{const r=indexedDB.open('invasive-survey',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>{db=r.result;res()};r.onerror=()=>rej(r.error)})}
+const kvGet=k=>new Promise(r=>{const q=db.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>r(q.result);q.onerror=()=>r(undefined)});
+const kvSet=(k,v)=>new Promise(r=>{const t=db.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=()=>r()});
+let S={projects:[],current:null}; // S.projects: [{id,name,fields,features,cover}]
+let P=null;
+const uid=()=>Math.random().toString(36).slice(2,10);
+let saveT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>kvSet('state',S),300)}
+function newProject(name){return{id:uid(),name:name||'New property',fields:{programs:{}},features:[],cover:{},planEdits:null}}
+
+/* ========================= MAP ========================= */
+let map,layers={},sel=null,vtx=[],mode=null,draft=[],draftLayer=null,gpsMarker=null,gpsLast=null,watchId=null,base='sat',tl;
+function initMap(){
+  map=L.map('map',{zoomControl:false,attributionControl:true}).setView([39.77,-86.16],6);
+  L.control.zoom({position:'bottomleft'}).addTo(map);
+  setBase();
+  map.on('click',e=>{ if(mode==='marker'){placeMarker(e.latlng.lat,e.latlng.lng)} else if(mode==='poly'){addVertex(e.latlng.lat,e.latlng.lng)} else if(sel){closeSheet()} });
+}
+function setBase(){
+  if(tl)map.removeLayer(tl);
+  tl=base==='sat'
+   ?L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Imagery © Esri'})
+   :L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'});
+  tl.addTo(map);
+}
+function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',2600)}
+function pinIcon(c){return L.divIcon({className:'',html:`<div class="pin" style="background:${c}"></div>`,iconSize:[26,26],iconAnchor:[13,26]})}
+function drawFeature(f){
+  if(layers[f.id])map.removeLayer(layers[f.id]);
+  let l;
+  if(f.type==='marker'){l=L.marker(f.coords[0],{icon:pinIcon(f.color)})}
+  else{l=L.polygon(f.coords,{color:f.color,weight:3,fillColor:f.color,fillOpacity:.3})}
+  l.on('click',e=>{L.DomEvent.stopPropagation(e);if(!mode)selectFeature(f.id)});
+  l.addTo(map);layers[f.id]=l;
+}
+function redrawAll(){Object.values(layers).forEach(l=>map.removeLayer(l));layers={};clearVtx();P.features.forEach(drawFeature);fitAll()}
+function fitAll(){const pts=P.features.flatMap(f=>f.coords);if(pts.length)map.fitBounds(L.latLngBounds(pts).pad(.2),{maxZoom:18})}
+function startGPS(){
+  if(!navigator.geolocation){toast('GPS not available');return}
+  if(watchId!=null)return;
+  watchId=navigator.geolocation.watchPosition(p=>{
+    gpsLast={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy};
+    $('gpsstat').textContent='GPS ±'+Math.round(p.coords.accuracy)+' m';
+    if(!gpsMarker)gpsMarker=L.marker([gpsLast.lat,gpsLast.lng],{icon:L.divIcon({className:'',html:'<div class="gpsdot"></div>',iconSize:[16,16]}),interactive:false,zIndexOffset:1000}).addTo(map);
+    else gpsMarker.setLatLng([gpsLast.lat,gpsLast.lng]);
+  },e=>{$('gpsstat').textContent='GPS: '+(e.code===1?'denied':'no fix')},{enableHighAccuracy:true,maximumAge:2000,timeout:20000});
+}
+function needGPS(cb){
+  if(gpsLast){cb(gpsLast);return}
+  startGPS();toast('Waiting for GPS fix…');
+  let n=0;const iv=setInterval(()=>{if(gpsLast){clearInterval(iv);cb(gpsLast)}else if(++n>40){clearInterval(iv);toast('No GPS fix. Check location permission.')}},500);
+}
+/* --- add marker --- */
+function placeMarker(lat,lng){
+  const f={id:uid(),type:'marker',coords:[[lat,lng]],color:COLORS[0],name:'',species:[],density:'low',notes:'',photos:[],created:Date.now()};
+  P.features.push(f);drawFeature(f);endDraw();save();selectFeature(f.id);
+}
+/* --- polygon drawing --- */
+function addVertex(lat,lng){draft.push([lat,lng]);renderDraft()}
+function renderDraft(){
+  if(draftLayer)map.removeLayer(draftLayer);
+  draftLayer=L.layerGroup();
+  if(draft.length>1)L.polyline(draft,{color:'#fff',weight:3,dashArray:'6 6'}).addTo(draftLayer);
+  draft.forEach(p=>L.circleMarker(p,{radius:6,color:'#111',weight:2,fillColor:'#fff',fillOpacity:1}).addTo(draftLayer));
+  draftLayer.addTo(map);
+  const m=$('drawbar').querySelector('.msg');if(m)m.textContent=draft.length+' point'+(draft.length===1?'':'s')+'. Tap map or use GPS to add.';
+}
+function startMode(m){
+  closeSheet();endDraw();mode=m;draft=[];
+  $('bMarker').classList.toggle('on',m==='marker');$('bPoly').classList.toggle('on',m==='poly');
+  const bar=$('drawbar');bar.classList.add('on');
+  if(m==='marker'){
+    bar.innerHTML=`<div class="msg">Tap the map to place a marker, or drop one at your location.</div><button class="btn pri" id="dGps">Marker at my GPS</button><button class="btn" id="dCancel">Cancel</button>`;
+    $('dGps').onclick=()=>needGPS(g=>placeMarker(g.lat,g.lng));
+  }else{
+    bar.innerHTML=`<div class="msg">0 points. Tap map or use GPS to add.</div><button class="btn" id="dGps">+ GPS point</button><button class="btn" id="dUndo">Undo</button><button class="btn pri" id="dDone">Finish</button><button class="btn" id="dCancel">Cancel</button>`;
+    $('dGps').onclick=()=>needGPS(g=>addVertex(g.lat,g.lng));
+    $('dUndo').onclick=()=>{draft.pop();renderDraft()};
+    $('dDone').onclick=finishPoly;
+  }
+  $('dCancel').onclick=endDraw;
+}
+function finishPoly(){
+  if(draft.length<3){toast('A polygon needs at least 3 points');return}
+  const f={id:uid(),type:'poly',coords:draft.slice(),color:COLORS[3],name:'',species:[],density:'medium',notes:'',photos:[],created:Date.now()};
+  P.features.push(f);drawFeature(f);endDraw();save();selectFeature(f.id);
+}
+function endDraw(){
+  mode=null;draft=[];if(draftLayer){map.removeLayer(draftLayer);draftLayer=null}
+  $('drawbar').classList.remove('on');$('bMarker').classList.remove('on');$('bPoly').classList.remove('on');
+}
+/* --- vertex editing --- */
+function clearVtx(){vtx.forEach(v=>map.removeLayer(v));vtx=[]}
+function showVtx(f){
+  clearVtx();if(f.type!=='poly')return;
+  f.coords.forEach((c,i)=>{
+    const m=L.marker(c,{draggable:true,icon:L.divIcon({className:'',html:'<div class="vtx"></div>',iconSize:[18,18]}),zIndexOffset:900}).addTo(map);
+    m.on('drag',e=>{f.coords[i]=[e.latlng.lat,e.latlng.lng];layers[f.id].setLatLngs(f.coords)});
+    m.on('dragend',()=>{save();refreshAreaInfo(f)});
+    m.on('contextmenu',()=>{if(f.coords.length>3){f.coords.splice(i,1);drawFeature(f);showVtx(f);save()}});
+    vtx.push(m);
+  });
+}
+/* ========================= FEATURE SHEET ========================= */
+function areaAcres(coords){
+  if(coords.length<3)return 0;
+  const lat0=coords.reduce((a,c)=>a+c[0],0)/coords.length,k=Math.cos(lat0*Math.PI/180);
+  const p=coords.map(c=>[c[1]*111320*k,c[0]*110540]);let a=0;
+  for(let i=0;i<p.length;i++){const j=(i+1)%p.length;a+=p[i][0]*p[j][1]-p[j][0]*p[i][1]}
+  return Math.abs(a)/2/4046.86;
+}
+function refreshAreaInfo(f){const e=$('areainfo');if(e&&f.type==='poly')e.textContent='Area: '+areaAcres(f.coords).toFixed(2)+' ac'}
+function selectFeature(id){
+  const f=P.features.find(x=>x.id===id);if(!f)return;
+  sel=id;showVtx(f);renderSheet(f);
+  const l=layers[id];map.panTo(f.type==='marker'?f.coords[0]:l.getBounds().getCenter());
+}
+function closeSheet(){sel=null;clearVtx();$('sheet').classList.remove('on')}
+function renderSheet(f){
+  const sh=$('sheet');sh.classList.add('on');
+  const ll=f.type==='marker'?`${f.coords[0][0].toFixed(6)}, ${f.coords[0][1].toFixed(6)}`:'';
+  sh.innerHTML=`
+  <h2><span>${f.type==='marker'?'Marker':'Polygon'}<span class="hint" id="areainfo" style="font-weight:400;margin-left:8px">${f.type==='poly'?'Area: '+areaAcres(f.coords).toFixed(2)+' ac':ll}</span></span><button class="btn" id="sClose">Done</button></h2>
+  <label class="l" for="sName">Label</label><input type="text" id="sName" value="${esc(f.name)}" placeholder="e.g. NE woodlot honeysuckle">
+  <label class="l">Color</label><div class="sw" id="sColors">${COLORS.map(c=>`<i data-c="${c}" style="background:${c}" class="${c===f.color?'on':''}"></i>`).join('')}</div>
+  <label class="l">Species present</label>
+  <div class="chips" id="sChips"></div>
+  <input type="text" id="sSearch" placeholder="Search species to add…">
+  <div class="splist" id="sList"></div>
+  <label class="l" for="sDens">Density here</label>
+  <select id="sDens">${['low','medium','high'].map(d=>`<option ${f.density===d?'selected':''}>${d}</option>`).join('')}</select>
+  <label class="l" for="sNotes">Notes</label><textarea id="sNotes">${esc(f.notes)}</textarea>
+  <label class="l">Photos</label>
+  <div class="row"><button class="btn" id="sCam">Take photo</button><button class="btn" id="sLib">Add from library</button></div>
+  <div class="photos" id="sPhotos"></div>
+  <div class="row" style="margin-top:16px"><button class="btn dng" id="sDel">Delete</button>${f.type==='poly'?'<span class="hint" style="align-self:center">Drag white handles to reshape. Long-press a handle to remove it.</span>':'<button class="btn" id="sMove">Move to my GPS</button>'}</div>`;
+  $('sClose').onclick=closeSheet;
+  $('sName').oninput=e=>{f.name=e.target.value;save()};
+  $('sNotes').oninput=e=>{f.notes=e.target.value;save()};
+  $('sDens').onchange=e=>{f.density=e.target.value;save()};
+  $('sColors').onclick=e=>{const c=e.target.dataset.c;if(!c)return;f.color=c;drawFeature(f);showVtx(f);save();[...$('sColors').children].forEach(i=>i.classList.toggle('on',i.dataset.c===c))};
+  $('sSearch').oninput=()=>fillList(f);
+  fillChips(f);fillList(f);fillPhotos(f);
+  $('sCam').onclick=()=>{photoTarget=f.id;$('photoIn').click()};
+  $('sLib').onclick=()=>{photoTarget=f.id;$('photoLib').click()};
+  $('sDel').onclick=()=>{
+    if($('sDel').dataset.sure){map.removeLayer(layers[f.id]);delete layers[f.id];P.features=P.features.filter(x=>x.id!==f.id);closeSheet();save();return}
+    $('sDel').dataset.sure=1;$('sDel').textContent='Tap again to delete';
+  };
+  if($('sMove'))$('sMove').onclick=()=>needGPS(g=>{f.coords=[[g.lat,g.lng]];drawFeature(f);save();renderSheet(f)});
+}
+function fillChips(f){
+  $('sChips').innerHTML=f.species.length?f.species.map((s,i)=>`<span class="chip">${esc(short(s))}<b data-i="${i}">×</b></span>`).join(''):'<span class="hint">None selected yet.</span>';
+  $('sChips').onclick=e=>{const i=e.target.dataset.i;if(i==null)return;f.species.splice(+i,1);fillChips(f);fillList(f);save()};
+}
+function fillList(f){
+  const q=$('sSearch').value.toLowerCase();
+  const items=sortedSpecies.filter(s=>!f.species.includes(s)&&(!q||s.toLowerCase().includes(q))).slice(0,60);
+  $('sList').innerHTML=items.map(s=>`<div data-s="${esc(s)}">＋ ${esc(s)}</div>`).join('')||'<div class="hint">No matches</div>';
+  $('sList').onclick=e=>{const d=e.target.closest('[data-s]');if(!d)return;f.species.push(d.dataset.s);$('sSearch').value='';fillChips(f);fillList(f);save()};
+}
+function fillPhotos(f){
+  $('sPhotos').innerHTML=f.photos.map((p,i)=>`<span><img src="${p}" alt="Photo ${i+1}"><em data-i="${i}">×</em></span>`).join('');
+  $('sPhotos').onclick=e=>{const i=e.target.dataset.i;if(i==null)return;f.photos.splice(+i,1);fillPhotos(f);save()};
+}
+let photoTarget=null;
+function shrink(file){return new Promise(res=>{const img=new Image,u=URL.createObjectURL(file);img.onload=()=>{const s=Math.min(1,1280/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=img.width*s;c.height=img.height*s;c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(u);res(c.toDataURL('image/jpeg',.75))};img.onerror=()=>res(null);img.src=u})}
+async function onPhotos(e){
+  const f=P.features.find(x=>x.id===photoTarget);if(!f)return;
+  for(const file of e.target.files){const d=await shrink(file);if(d)f.photos.push(d)}
+  e.target.value='';save();if(sel===f.id)fillPhotos(f);toast('Photo added');
+}
+/* ========================= SPECIES TAB ========================= */
+function mappedSpecies(){
+  const m={};
+  P.features.forEach(f=>f.species.forEach(s=>{(m[s]=m[s]||{n:0,acres:0,dens:0,f:[]}); const o=m[s];o.n++;o.f.push(f);if(f.type==='poly')o.acres+=areaAcres(f.coords);o.dens=Math.max(o.dens,['low','medium','high'].indexOf(f.density)+1)}));
+  return m;
+}
+function renderSpeciesTab(){
+  const m=mappedSpecies(),ks=Object.keys(m).sort();
+  $('spsummary').innerHTML=ks.length?ks.map(k=>`<div style="padding:6px 0;border-bottom:1px solid var(--line)"><b>${esc(short(k))}</b><br><span class="hint">${m[k].n} feature${m[k].n>1?'s':''}${m[k].acres?`, ${m[k].acres.toFixed(2)} ac mapped`:''}</span></div>`).join(''):'Nothing mapped yet.';
+  const q=$('spq').value.toLowerCase();
+  $('splibrary').innerHTML=sortedSpecies.filter(s=>{if(!q)return true;const g=GROUPS[SPG[s]];return s.toLowerCase().includes(q)||(g&&(g.m+g.t).toLowerCase().includes(q))}).slice(0,80).map(s=>{
+    const g=GROUPS[SPG[s]];
+    return `<details style="padding:6px 0;border-bottom:1px solid var(--line)"><summary>${esc(s)}</summary><div class="hint" style="margin-top:6px">${g?`${g.w?`<p class="warn">${esc(g.w)}</p>`:''}${g.m}<br><br>${g.t}`:'No treatment entry in the template for this species. Add recommendations manually in the plan.'}</div></details>`}).join('');
+}
+/* ========================= PLAN ========================= */
+const F=id=>$(id).value||'';
+const fdate=v=>v?new Date(v+'T12:00:00').toLocaleDateString('en-US'):'';
+function buildPlan(){
+  const m=mappedSpecies(),ks=SPECIES.filter(s=>m[s]),fl=P.fields;
+  const totalAc=parseFloat(fl.area)||P.features.filter(f=>f.type==='poly').reduce((a,f)=>a+areaAcres(f.coords),0);
+  const prog=PROGRAMS.map(p=>`<tr><td><b>${esc(p)}</b></td><td>${fl.programs[p]?'☒ '+esc(fl.programs[p]===true?'':fl.programs[p]):''}</td></tr>`).join('')+`<tr><td><b>Other:</b></td><td>${esc(fl.otherprog||'')}</td></tr>`;
+  const c=ll=>{const pts=P.features.flatMap(f=>f.coords);if(!pts.length)return'';return ll==='lat'?(pts.reduce((a,p)=>a+p[0],0)/pts.length).toFixed(5):(pts.reduce((a,p)=>a+p[1],0)/pts.length).toFixed(5)};
+  let h=`<h2 style="text-align:center">Indiana Invasives Initiative (III) Landowner Assistance Form</h2>
+  <p><b>DISCLAIMER:</b> SICIM (State of Indiana Cooperative Invasives Management), which manages the III, is not a cost-share program. As a non-profit, SICIM can connect a landowner to both state and local funding so a landowner can place an application (if available).</p>
+  <p><b>DISCLAIMER:</b> Landowners must abide by all federal and state cost-share programs in which they are enrolled. Those cost-share programs trump any guidance provided in this report. The landowner is responsible for knowing all management plans provided by federal and state agencies. SICIM is not privy to that information and therefore is not liable to any recommendations in those plans.</p>
+  <p>Per Executive Order 13112 (Section 1. Definitions) an "invasive species" is a species that is: 1) non-native (or alien) to the ecosystem under consideration and, 2) whose introduction causes or is likely to cause economic or environmental harm or harm to human health.</p>
+  <table><tr><th colspan="2">Please check/add comment (date enrolled) for all federal/state programs that landowner is enrolled:</th></tr>${prog}</table>
+  <table><tr><th colspan="4">Property Details:</th></tr>
+  <tr><td><b>Landowner:</b></td><td>${esc(fl.landowner)}</td><td><b>Address:</b></td><td>${esc(fl.address)}</td></tr>
+  <tr><td><b>County:</b></td><td>${esc(fl.county)}</td><td><b>Area (ac.):</b></td><td>${esc(fl.area||(totalAc?totalAc.toFixed(1):''))}</td></tr>
+  <tr><td><b>Latitude:</b></td><td>${esc(fl.lat||c('lat'))}</td><td><b>Longitude:</b></td><td>${esc(fl.lon||c('lon'))}</td></tr>
+  <tr><td><b>Site Visit Date:</b></td><td>${fdate(fl.visit)}</td><td><b>Follow up Date:</b></td><td>${fdate(fl.follow)}</td></tr></table>
+  <table><tr><th>Property goals:</th></tr><tr><td>${esc(fl.goals).replace(/\n/g,'<br>')||'&nbsp;'}</td></tr></table>
+  <table><tr><th>Invasive Species Found</th><th>Current % Cover<sup>1</sup> / (range)</th><th>Density<sup>2</sup></th><th>General Description of Population</th></tr>`;
+  if(!ks.length)h+=`<tr><td colspan="4">No species mapped yet.</td></tr>`;
+  ks.forEach(s=>{
+    const o=m[s],cv=P.cover[s]||{},est=totalAc&&o.acres?Math.min(100,o.acres/totalAc*100):0;
+    const dens=cv.dens||['','low','medium','high'][o.dens];
+    const desc=cv.desc!=null?cv.desc:`Mapped at ${o.n} location${o.n>1?'s':''}${o.acres?` (${o.acres.toFixed(2)} ac)`:''}.`;
+    h+=`<tr><td>${esc(s)}</td><td><input data-sp="${esc(s)}" data-k="cover" value="${esc(cv.cover??'')}" placeholder="${est?'≈'+est.toFixed(0)+'%':'%'}"></td><td><select data-sp="${esc(s)}" data-k="dens">${['','low','medium','high'].map(d=>`<option ${d===dens?'selected':''}>${d}</option>`).join('')}</select></td><td><input data-sp="${esc(s)}" data-k="desc" value="${esc(desc)}"></td></tr>`;
+  });
+  h+=`<tr><td colspan="4" style="font-size:11px">1/ Estimate percent cover for the entire survey area. 2/ Qualitative assessment of how dense the species is where it is found (e.g., low, medium, or high). Example: low = single, scattered plants versus high = very dense, almost monoculture</td></tr></table>
+  <table><tr><th>Use Pesticides Wisely:</th></tr><tr><td>The percentages listed are percent solutions of products, not active ingredients. Always read the entire pesticide label carefully, follow all mixing and application instructions and wear all recommended personal protective gear and clothing. If a stream, pond, or other wetland area is observed, use chemicals that are approved for aquatic areas.</td></tr></table>`;
+  const gi=[...new Set(ks.map(s=>SPG[s]).filter(i=>i>=0))].sort((a,b)=>a-b);
+  h+=`<table><tr><th>Invasive Species to Control</th><th>Treatment Method (Digging, Pulling, Cutting, Chemical*, Controlled Browsing, etc.)<sup>3</sup></th><th>Timing of Treatment(s) or Plant Growth Stage for Best Effective Control</th></tr>`;
+  gi.forEach(i=>{const g=GROUPS[i],names=g.s.filter(s=>m[s]).map(short).join(', ');
+    h+=`<tr><td>${esc(names)}${g.w?`<br><span class="warn">${esc(g.w)}</span>`:''}</td><td>${g.m}</td><td>${g.t}</td></tr>`});
+  ks.filter(s=>SPG[s]<0).forEach(s=>h+=`<tr><td>${esc(short(s))}</td><td colspan="2"><i>No treatment entry in the template for this species. Add recommendations here.</i></td></tr>`);
+  if(!ks.length)h+=`<tr><td colspan="3">Treatment rows appear here for each species on the map.</td></tr>`;
+  h+=`<tr><td colspan="3" style="font-size:11px">3/ Include specific application method(s), equipment type, herbicide type and rate. * Before applying any chemicals, make sure to follow the manufacturer's labels and any applicable laws. Failure to do so is against the law.</td></tr></table>
+  <table><tr><th colspan="2">Monitoring Plan</th></tr><tr><td>Timing</td><td>Monitor annually, invasive seedbank will persist for years</td></tr><tr><td>Method</td><td>Once infestations are under control, walk the entire property once a year checking for new sprouts and new growths. Manually hand pull young plants, especially after rain</td></tr></table>
+  <table><tr><th colspan="2">Maintenance</th></tr><tr><td>Retreatments:</td><td>☒ Spot Treatments</td></tr><tr><td colspan="2">Specific recommendations for retreating areas: Once eradication begins, watch for spots missed throughout the property and throughout the seasons. Make sure cut surface shrubs die completely and spot treat new shoots. If manually pulling shrubs, make sure all soil is shaken from the roots and hang/drape it upside down either over a log or in a tree so that the roots completely dry out. Root contact with soil could allow plants to resprout.</td></tr></table>
+  <table><tr><th>Additional Information</th></tr><tr><td>
+  <p><b>Where to Start Prioritizing Control:</b> https://indiananativeplants.org/invasive-plants/prioritizing-invasive-plant-removal/</p>
+  <p><b>Always use pesticides wisely, and always read the entire pesticide label carefully</b> when chemically treating invasive species. If a stream, pond, or other wetland area is observed, use chemicals that are approved for aquatic areas.</p>
+  <p><b>Certified Professionals:</b> Certified professionals can assist with large and/or hazard tree removal, safety issues, professional site design, erosion control and more. https://sicim.info/contractors</p>
+  <p><b>Resources:</b> SICIM https://sicim.info/ · Calendar of Control (SICIM) · Woody Invasives of the Great Lakes https://woodyinvasives.org/ · Indiana Invasive Species Council https://ag.purdue.edu/department/entm/iisc/ · Indiana Native Plant Society https://indiananativeplants.org/</p>
+  <p><b>Help Stop the Spread:</b> Clean your shoes/boots/equipment after invasive treatment on the property to help prevent the spread of invasive plant seeds. https://naisma.org/programs/playcleango/</p>
+  <p><b>When purchasing plants for the property,</b> be advised that many invasive species are sold in nurseries. Native vendors: https://indiananativeplants.org/landscaping/where-to-buy/</p>
+  </td></tr></table>
+  <table><tr><th colspan="4">Report Credits:</th></tr><tr><td><b>Written by:</b></td><td>${esc(fl.by)}</td><td><b>Assisted by:</b></td><td>${esc(fl.assist)}</td></tr><tr><td><b>Report Date</b></td><td>${fdate(fl.rdate)}</td><td><b>Signature</b></td><td></td></tr></table>
+  <table><tr><th colspan="4">Local Resources by County</th></tr>
+  <tr><td><b>SICIM Regional Specialist:</b></td><td>https://sicim.info/cisma-project/#iiicontacts</td><td><b>Cooperative Invasive Species Management Area:</b></td><td>${esc(fl.cisma)}</td></tr>
+  <tr><td><b>Soil and Water Conservation District:</b></td><td>${esc(fl.swcd)}</td><td><b>Natural Resource Conservation Service:</b></td><td>https://www.nrcs.usda.gov/</td></tr>
+  <tr><td><b>District Forester:</b></td><td>https://www.in.gov/dnr/forestry/private-forestland-management/district-foresters/</td><td><b>Aquatic Invasive Species Biologist:</b></td><td>ais@dnr.IN.gov, 317-234-3883</td></tr></table>
+  <p>Please see the attached map.</p>
+  <p style="font-size:11px">A nonionic surfactant is recommended to be added to all foliar herbicide mixes to increase coverage/efficacy and is necessary for periwinkle and wintercreeper due to their waxy leaves. Add according to label directions. *Herbicide rate recommendations are given as volume/volume mixes. For example, 2% glyphosate would be 2% of a glyphosate herbicide product in 98% water to equal 100% total volume of solution. *Herbicide solution rates for glyphosate products are based on products with an original concentration of 41% active ingredient glyphosate. Always check your product's label &amp; mixing instructions as many glyphosate products have lower concentrations. *Some recommendations above include a range of possible herbicide mix concentrations. In these cases, it is best to start with a lower herbicide concentration and test for efficacy, increasing the rate used if needed.</p>`;
+  return h;
+}
+function renderPlan(){
+  const p=$('plan');
+  if(P.planEdits&&P.planEditsFor===signature()){p.innerHTML=P.planEdits}else{p.innerHTML=buildPlan();P.planEdits=null}
+  p.contentEditable='true';
+}
+function signature(){return JSON.stringify(P.features.map(f=>[f.id,f.species,f.density,f.coords.length]))+JSON.stringify(P.fields)}
+$('plan').addEventListener('input',e=>{
+  const t=e.target;
+  if(t.dataset&&t.dataset.sp){const c=P.cover[t.dataset.sp]=P.cover[t.dataset.sp]||{};c[t.dataset.k]=t.value;save();return}
+  P.planEdits=$('plan').innerHTML;P.planEditsFor=signature();save();
+});
+function planForExport(){
+  const c=$('plan').cloneNode(true);
+  c.querySelectorAll('input,select').forEach(el=>{const s=document.createElement('span');s.textContent=el.value;el.replaceWith(s)});
+  return c.innerHTML;
+}
+function download(name,data,type){
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);
+}
+const fname=()=>(P.fields.landowner||P.name||'property').replace(/[^\w\-]+/g,'_');
+$('bExportDoc').onclick=()=>{
+  const css='body{font-family:Calibri,Arial,sans-serif;font-size:10.5pt}table{border-collapse:collapse;width:100%;margin:8pt 0}td,th{border:1px solid #777;padding:4pt;vertical-align:top;text-align:left;font-size:9.5pt}th{background:#e8efe4}.warn{color:#9a1c1c;font-weight:bold}';
+  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Management Plan</title><style>${css}</style></head><body>${planForExport()}${mapAppendix()}</body></html>`;
+  download(`Management_Plan_${fname()}.doc`,'﻿'+html,'application/msword');
+};
+function mapAppendix(){
+  const fs=P.features;if(!fs.length)return'';
+  return `<br clear="all" style="page-break-before:always"><h3>Map features</h3><table><tr><th>#</th><th>Type</th><th>Label</th><th>Species</th><th>Location (lat, lng)</th><th>Notes</th></tr>${fs.map((f,i)=>`<tr><td>${i+1}</td><td>${f.type==='poly'?'Polygon, '+areaAcres(f.coords).toFixed(2)+' ac':'Marker'}</td><td>${esc(f.name)}</td><td>${esc(f.species.map(short).join(', '))}</td><td>${f.coords[0][0].toFixed(5)}, ${f.coords[0][1].toFixed(5)}</td><td>${esc(f.notes)}</td></tr>`).join('')}</table><p>Export the map from the app as KML (Google My Maps) or GeoJSON, or attach a map screenshot.</p>`;
+}
+$('bRefresh').onclick=()=>{P.planEdits=null;P.cover={...P.cover};renderPlan();save();toast('Plan refreshed from map')};
+/* ========================= PROPERTY TAB / PROJECTS ========================= */
+const FIELDS=['landowner','address','county','area','lat','lon','visit','follow','goals','otherprog','by','assist','rdate','cisma','swcd'];
+function loadFields(){
+  FIELDS.forEach(k=>$('f_'+k).value=P.fields[k]||'');
+  $('programs').innerHTML=PROGRAMS.map((p,i)=>`<div style="padding:6px 0"><label><input type="checkbox" data-p="${i}" ${P.fields.programs[p]?'checked':''}> ${esc(p)}</label> <input type="text" data-pc="${i}" placeholder="date enrolled" value="${esc(P.fields.programs[p]&&P.fields.programs[p]!==true?P.fields.programs[p]:'')}" style="margin-top:4px"></div>`).join('');
+  $('ptitle').textContent=P.fields.landowner||P.name;
+  $('projsel').innerHTML=S.projects.map(p=>`<option value="${p.id}" ${p.id===P.id?'selected':''}>${esc(p.fields.landowner||p.name)}</option>`).join('');
+}
+FIELDS.forEach(k=>$('f_'+k).addEventListener('input',e=>{P.fields[k]=e.target.value;if(k==='landowner'){P.name=e.target.value||P.name;$('ptitle').textContent=P.name}P.planEdits=null;save()}));
+$('programs').addEventListener('input',e=>{
+  const i=e.target.dataset.p??e.target.dataset.pc;if(i==null)return;const p=PROGRAMS[i];
+  const box=$('programs').querySelector(`[data-p="${i}"]`),txt=$('programs').querySelector(`[data-pc="${i}"]`);
+  P.fields.programs[p]=box.checked?(txt.value||true):false;P.planEdits=null;save();
+});
+function setProject(id){
+  P=S.projects.find(p=>p.id===id)||S.projects[0];S.current=P.id;save();
+  closeSheet();endDraw();loadFields();redrawAll();
+}
+$('projsel').onchange=e=>setProject(e.target.value);
+$('bNew').onclick=()=>{const p=newProject('New property');S.projects.push(p);setProject(p.id);show('map');toast('New property created')};
+$('bDelProj').onclick=function(){
+  if(!this.dataset.sure){this.dataset.sure=1;this.textContent='Tap again to delete';setTimeout(()=>{delete this.dataset.sure;this.textContent='Delete this one'},3500);return}
+  S.projects=S.projects.filter(p=>p.id!==P.id);if(!S.projects.length)S.projects.push(newProject());setProject(S.projects[0].id);delete this.dataset.sure;this.textContent='Delete this one';
+};
+$('bJson').onclick=()=>download(`survey_backup_${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(S),'application/json');
+$('bImport').onclick=()=>$('importFile').click();
+$('importFile').onchange=async e=>{
+  try{const d=JSON.parse(await e.target.files[0].text());if(!d.projects)throw 0;S=d;setProject(S.current||S.projects[0].id);toast('Restored')}catch{toast('That file is not a valid backup')}
+  e.target.value='';
+};
+$('bGeo').onclick=()=>download(`${fname()}.geojson`,JSON.stringify({type:'FeatureCollection',features:P.features.map(f=>({type:'Feature',properties:{name:f.name,species:f.species.map(short).join('; '),density:f.density,notes:f.notes,color:f.color},geometry:f.type==='marker'?{type:'Point',coordinates:[f.coords[0][1],f.coords[0][0]]}:{type:'Polygon',coordinates:[[...f.coords,f.coords[0]].map(c=>[c[1],c[0]])]}}))}),'application/geo+json');
+$('bKml').onclick=()=>{
+  const kc=h=>'ff'+h.slice(5,7)+h.slice(3,5)+h.slice(1,3);
+  const pm=f=>`<Placemark><name>${esc(f.name||(f.type==='poly'?'Polygon':'Marker'))}</name><description>${esc('Species: '+f.species.map(short).join(', ')+'\nDensity: '+f.density+'\n'+f.notes)}</description><Style><IconStyle><color>${kc(f.color)}</color></IconStyle><LineStyle><color>${kc(f.color)}</color><width>3</width></LineStyle><PolyStyle><color>66${kc(f.color).slice(2)}</color></PolyStyle></Style>${f.type==='marker'?`<Point><coordinates>${f.coords[0][1]},${f.coords[0][0]},0</coordinates></Point>`:`<Polygon><outerBoundaryIs><LinearRing><coordinates>${[...f.coords,f.coords[0]].map(c=>c[1]+','+c[0]+',0').join(' ')}</coordinates></LinearRing></outerBoundaryIs></Polygon>`}</Placemark>`;
+  download(`${fname()}.kml`,`<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${esc(P.name)}</name>${P.features.map(pm).join('')}</Document></kml>`,'application/vnd.google-earth.kml+xml');
+};
+/* ========================= NAV & INIT ========================= */
+function show(t){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  document.querySelectorAll('.tab').forEach(s=>s.classList.toggle('on',s.id==='tab-'+t));
+  if(t==='map')setTimeout(()=>map.invalidateSize(),50);
+  if(t==='species')renderSpeciesTab();
+  if(t==='plan')renderPlan();
+}
+document.querySelector('nav').onclick=e=>{const t=e.target.dataset.t;if(t)show(t)};
+$('spq').oninput=renderSpeciesTab;
+$('bLocate').onclick=()=>{startGPS();needGPS(g=>map.setView([g.lat,g.lng],Math.max(map.getZoom(),18)))};
+$('bMarker').onclick=()=>mode==='marker'?endDraw():startMode('marker');
+$('bPoly').onclick=()=>mode==='poly'?endDraw():startMode('poly');
+$('bLayer').onclick=()=>{base=base==='sat'?'osm':'sat';setBase();toast(base==='sat'?'Satellite':'Street map')};
+$('photoIn').onchange=onPhotos;$('photoLib').onchange=onPhotos;
+(async()=>{
+  await idb();
+  const saved=await kvGet('state');
+  if(saved&&saved.projects&&saved.projects.length)S=saved;else{S.projects=[newProject('My first property')];S.current=S.projects[0].id}
+  initMap();
+  P=S.projects.find(p=>p.id===S.current)||S.projects[0];
+  loadFields();redrawAll();startGPS();
+  if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+  if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
+})();
+</script>
+</body>
+</html>
