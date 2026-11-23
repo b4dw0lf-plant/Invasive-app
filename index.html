@@ -240,7 +240,7 @@ function initMap(){
   map=L.map('map',{zoomControl:false,attributionControl:true}).setView([39.77,-86.16],6);
   L.control.zoom({position:'bottomleft'}).addTo(map);
   setBase();
-  map.on('click',e=>{ if(mode==='marker'){placeMarker(e.latlng.lat,e.latlng.lng)} else if(mode==='poly'){addVertex(e.latlng.lat,e.latlng.lng)} else if(sel){closeSheet()} });
+  map.on('click',e=>{ if(mode==='marker'){placeMarker(e.latlng.lat,e.latlng.lng)} else if(mode==='poly'){addVertex(e.latlng.lat,e.latlng.lng)} else pickAt(e.latlng) });
 }
 function setBase(){
   if(tl)map.removeLayer(tl);
@@ -254,12 +254,12 @@ function pinIcon(c){return L.divIcon({className:'',html:`<div class="pin" style=
 function drawFeature(f){
   if(layers[f.id])map.removeLayer(layers[f.id]);
   let l;
-  if(f.type==='marker'){l=L.marker(f.coords[0],{icon:pinIcon(f.color)})}
-  else{l=L.polygon(f.coords,{color:f.color,weight:3,fillColor:f.color,fillOpacity:.3})}
-  l.on('click',e=>{L.DomEvent.stopPropagation(e);if(!mode)selectFeature(f.id)});
+  if(f.type==='marker'){l=L.marker(f.coords[0],{icon:pinIcon(f.color),interactive:false,keyboard:false})}
+  else{l=L.polygon(f.coords,{color:f.color,weight:3,fillColor:f.color,fillOpacity:f.fill===false?0:.3,interactive:false})}
   l.addTo(map);layers[f.id]=l;
 }
-function redrawAll(){Object.values(layers).forEach(l=>map.removeLayer(l));layers={};clearVtx();P.features.forEach(drawFeature);fitAll()}
+function applyOrder(){P.features.forEach(x=>{if(x.type==='poly'&&layers[x.id])layers[x.id].bringToFront()})}
+function redrawAll(){Object.values(layers).forEach(l=>map.removeLayer(l));layers={};clearVtx();P.features.forEach(drawFeature);applyOrder();fitAll()}
 function fitAll(){const pts=P.features.flatMap(f=>f.coords);if(pts.length)map.fitBounds(L.latLngBounds(pts).pad(.2),{maxZoom:18})}
 function startGPS(){
   if(!navigator.geolocation){toast('GPS not available');return}
@@ -339,7 +339,35 @@ function refreshAreaInfo(f){const e=$('areainfo');if(e&&f.type==='poly')e.textCo
 function selectFeature(id){
   const f=P.features.find(x=>x.id===id);if(!f)return;
   sel=id;showVtx(f);renderSheet(f);
-  const l=layers[id];map.panTo(f.type==='marker'?f.coords[0]:l.getBounds().getCenter());
+}
+function pip(lat,lng,ring){let c=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const yi=ring[i][0],xi=ring[i][1],yj=ring[j][0],xj=ring[j][1];if((yi>lat)!==(yj>lat)&&lng<(xj-xi)*(lat-yi)/(yj-yi)+xi)c=!c}return c}
+function segDist(p,a,b){const dx=b.x-a.x,dy=b.y-a.y,l2=dx*dx+dy*dy;let t=l2?((p.x-a.x)*dx+(p.y-a.y)*dy)/l2:0;t=Math.max(0,Math.min(1,t));return Math.hypot(p.x-(a.x+t*dx),p.y-(a.y+t*dy))}
+function hitsAt(ll){
+  const p=map.latLngToContainerPoint(ll),TOL=16,marks=[],polys=[];
+  P.features.forEach(f=>{
+    if(f.type==='marker'){const q=map.latLngToContainerPoint(f.coords[0]);if(Math.hypot(p.x-q.x,p.y-q.y+13)<=26||Math.hypot(p.x-q.x,p.y-q.y)<=26)marks.push(f)}
+    else{
+      const pts=f.coords.map(c=>map.latLngToContainerPoint(c));let edge=false;
+      for(let i=0;i<pts.length;i++){if(segDist(p,pts[i],pts[(i+1)%pts.length])<=TOL){edge=true;break}}
+      const inside=f.fill===false?false:pip(ll.lat,ll.lng,f.coords);
+      if(edge||inside)polys.push(f);
+    }});
+  polys.sort((a,b)=>areaAcres(a.coords)-areaAcres(b.coords));
+  return marks.concat(polys);
+}
+function pickAt(ll){
+  const h=hitsAt(ll);
+  if(!h.length){if(sel)closeSheet();return}
+  if(h.length===1){selectFeature(h[0].id);return}
+  showChooser(h);
+}
+function featLabel(f){return f.name||(f.species.length?f.species.map(short).join(', '):(f.type==='poly'?'Polygon':'Marker'))}
+function showChooser(h){
+  sel=null;clearVtx();const sh=$('sheet');sh.classList.add('on');
+  sh.innerHTML=`<h2><span>Several layers here. Pick one:</span><button class="btn" id="cClose">Cancel</button></h2>`+
+   h.map(f=>`<div class="pick" data-id="${f.id}" style="display:flex;gap:10px;align-items:center;padding:12px 4px;border-top:1px solid var(--line)"><i style="width:22px;height:22px;border-radius:50%;background:${f.color};flex:none"></i><span style="flex:1;min-width:0"><b>${esc(featLabel(f))}</b><br><span class="hint">${f.type==='poly'?'Polygon, '+areaAcres(f.coords).toFixed(2)+' ac':'Marker'}</span></span></div>`).join('');
+  $('cClose').onclick=closeSheet;
+  sh.querySelectorAll('.pick').forEach(d=>d.onclick=()=>selectFeature(d.dataset.id));
 }
 function closeSheet(){sel=null;clearVtx();$('sheet').classList.remove('on')}
 function renderSheet(f){
@@ -359,12 +387,13 @@ function renderSheet(f){
   <label class="l">Photos</label>
   <div class="row"><button class="btn" id="sCam">Take photo</button><button class="btn" id="sLib">Add from library</button></div>
   <div class="photos" id="sPhotos"></div>
+  ${f.type==='poly'?`<label class="l">Layer</label><div class="row"><button class="btn" id="sFront">Bring to front</button><button class="btn" id="sBack">Send to back</button></div><label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="sFill" ${f.fill===false?'checked':''}> Outline only (no fill)</label>`:''}
   <div class="row" style="margin-top:16px"><button class="btn dng" id="sDel">Delete</button>${f.type==='poly'?'<span class="hint" style="align-self:center">Drag white handles to reshape. Long-press a handle to remove it.</span>':'<button class="btn" id="sMove">Move to my GPS</button>'}</div>`;
   $('sClose').onclick=closeSheet;
   $('sName').oninput=e=>{f.name=e.target.value;save()};
   $('sNotes').oninput=e=>{f.notes=e.target.value;save()};
   $('sDens').onchange=e=>{f.density=e.target.value;save()};
-  $('sColors').onclick=e=>{const c=e.target.dataset.c;if(!c)return;f.color=c;drawFeature(f);showVtx(f);save();[...$('sColors').children].forEach(i=>i.classList.toggle('on',i.dataset.c===c))};
+  $('sColors').onclick=e=>{const c=e.target.dataset.c;if(!c)return;f.color=c;drawFeature(f);applyOrder();showVtx(f);save();[...$('sColors').children].forEach(i=>i.classList.toggle('on',i.dataset.c===c))};
   $('sSearch').oninput=()=>fillList(f);
   fillChips(f);fillList(f);fillPhotos(f);
   $('sCam').onclick=()=>{photoTarget=f.id;$('photoIn').click()};
@@ -373,6 +402,11 @@ function renderSheet(f){
     if($('sDel').dataset.sure){map.removeLayer(layers[f.id]);delete layers[f.id];P.features=P.features.filter(x=>x.id!==f.id);closeSheet();save();return}
     $('sDel').dataset.sure=1;$('sDel').textContent='Tap again to delete';
   };
+  if($('sFront')){
+    $('sFront').onclick=()=>{P.features=P.features.filter(x=>x!==f).concat(f);applyOrder();save();toast('Brought to front')};
+    $('sBack').onclick=()=>{P.features=[f].concat(P.features.filter(x=>x!==f));applyOrder();save();toast('Sent to back')};
+    $('sFill').onchange=e=>{f.fill=!e.target.checked;drawFeature(f);applyOrder();showVtx(f);save()};
+  }
   if($('sMove'))$('sMove').onclick=()=>needGPS(g=>{f.coords=[[g.lat,g.lng]];drawFeature(f);save();renderSheet(f)});
 }
 function fillChips(f){
@@ -485,13 +519,145 @@ function download(name,data,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);
 }
 const fname=()=>(P.fields.landowner||P.name||'property').replace(/[^\w\-]+/g,'_');
-$('bExportPdf').onclick=()=>{
-  $('printArea').innerHTML=planForExport()+mapAppendix();
-  document.title='Management Plan - '+fname();
-  toast('Choose "Save as PDF" in the print screen');
-  setTimeout(()=>window.print(),400);
+/* ========================= PDF (built directly, no print dialog) ========================= */
+function loadPdfLib(){
+  if(window.PDFLib)return Promise.resolve();
+  return new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='pdf-lib.min.js';sc.onload=res;sc.onerror=()=>rej(new Error('pdf-lib.min.js is missing from the site. Upload it to the repository.'));document.head.appendChild(sc)});
+}
+async function buildPdf(){
+  await loadPdfLib();
+  const {PDFDocument,StandardFonts,rgb}=PDFLib;
+  const doc=await PDFDocument.create();
+  const F={n:await doc.embedFont(StandardFonts.Helvetica),b:await doc.embedFont(StandardFonts.HelveticaBold),i:await doc.embedFont(StandardFonts.HelveticaOblique),bi:await doc.embedFont(StandardFonts.HelveticaBoldOblique)};
+  const FALL={'˚':'°','☒':'[x]','☐':'[ ]','≈':'~','≥':'>=','≤':'<=','＋':'+','…':'...','‑':'-'},okc={};
+  const safe=t=>{let o='';for(const ch of String(t)){if(ch==='\t'||ch===' '){o+=' ';continue}if(ch==='\n'){o+=ch;continue}
+    if(okc[ch]===undefined){try{F.n.encodeText(ch);okc[ch]=ch}catch(e){okc[ch]=FALL[ch]??'?'}}o+=okc[ch]}return o};
+  const W=612,H=792,M=40,CW=W-2*M,BLACK=rgb(0,0,0),RED=rgb(.6,.11,.11),GREY=rgb(.47,.47,.47),HEAD=rgb(.91,.94,.89);
+  const pages=[];let page=null,y=0;
+  const newPage=()=>{page=doc.addPage([W,H]);pages.push(page);y=H-M};
+  newPage();
+  const fontFor=r=>F[(r.b?'b':'')+(r.i?'i':'')||'n'];
+  function runsOf(node,st,out){
+    node.childNodes.forEach(n=>{
+      if(n.nodeType===3){out.push({t:n.textContent.replace(/\s+/g,' '),b:st.b,i:st.i,c:st.c});return}
+      if(n.nodeType!==1)return;
+      const tag=n.tagName;
+      if(tag==='BR'){out.push({nl:1});return}
+      const s={b:st.b||tag==='B'||tag==='STRONG'||tag==='TH',i:st.i||tag==='I'||tag==='EM',c:st.c};
+      if(n.classList&&n.classList.contains('warn')){s.b=true;s.c='warn'}
+      const block=tag==='P'||tag==='DIV';
+      if(block&&out.length&&!out[out.length-1].nl)out.push({nl:1});
+      runsOf(n,s,out);
+      if(block)out.push({nl:1});
+    });
+    return out;
+  }
+  function layout(runs,width,size){
+    const lines=[];let cur=[],w=0;
+    const push=()=>{lines.push(cur);cur=[];w=0};
+    for(const r of runs){
+      if(r.nl){push();continue}
+      const font=fontFor(r),col=r.c==='warn'?RED:BLACK;
+      for(let p of (safe(r.t).match(/\s+|\S+/g)||[])){
+        if(/^\s+$/.test(p)){if(!cur.length)continue;const pw=font.widthOfTextAtSize(' ',size);cur.push({t:' ',f:font,c:col,w:pw});w+=pw;continue}
+        let pw=font.widthOfTextAtSize(p,size);
+        if(pw>width){
+          if(cur.length)push();
+          while(p.length){let k=p.length;while(k>1&&font.widthOfTextAtSize(p.slice(0,k),size)>width)k--;
+            const seg=p.slice(0,k),sw=font.widthOfTextAtSize(seg,size);cur.push({t:seg,f:font,c:col,w:sw});w=sw;p=p.slice(k);if(p.length)push()}
+          continue}
+        if(w+pw>width&&cur.length){while(cur.length&&cur[cur.length-1].t===' ')cur.pop();push()}
+        cur.push({t:p,f:font,c:col,w:pw});w+=pw;
+      }
+    }
+    if(cur.length)push();
+    while(lines.length&&!lines[lines.length-1].length)lines.pop();
+    while(lines.length&&!lines[0].length)lines.shift();
+    if(!lines.length)lines.push([]);
+    lines.forEach(l=>{while(l.length&&l[l.length-1].t===' ')l.pop()});
+    return lines;
+  }
+  const lineW=l=>l.reduce((a,s)=>a+s.w,0);
+  function measure(runs,size){
+    const one=layout(runs,1e6,size);let mx=0;one.forEach(l=>mx=Math.max(mx,lineW(l)));
+    let mn=0;one.forEach(l=>l.forEach(s=>{if(s.t!==' ')mn=Math.max(mn,Math.min(s.w,70))}));
+    // longest single word (segments are words)
+    return {min:mn,max:mx};
+  }
+  const lineH=sz=>sz*1.28;
+  function drawLine(l,x,by,size,align,width){
+    let cx=x;if(align==='center')cx=x+(width-lineW(l))/2;
+    l.forEach(s=>{if(s.t!==' '||true)page.drawText(s.t,{x:cx,y:by,size,font:s.f,color:s.c});cx+=s.w});
+  }
+  function block(el){
+    const tag=el.tagName;
+    if(tag==='BR'){if(/page-break-before/.test(el.getAttribute('style')||'')&&y<H-M-1)newPage();return}
+    if(tag==='TABLE'){table(el);return}
+    const head=tag==='H2'||tag==='H3';
+    const size=tag==='H2'?13.5:tag==='H3'?11.5:9;
+    const runs=runsOf(el,{b:head},[]);
+    const lines=layout(runs,CW,size),lh=lineH(size);
+    const center=el.style&&el.style.textAlign==='center';
+    y-=head?4:0;
+    lines.forEach(l=>{if(y-lh<M)newPage();y-=lh;drawLine(l,M,y+lh*.22,size,center?'center':'left',CW)});
+    y-=head?6:5;
+  }
+  function table(tbl){
+    const size=8.2,lh=lineH(size),pad=3.5;
+    const grid=[...tbl.rows].map(r=>[...r.cells].map(c=>({runs:runsOf(c,{b:c.tagName==='TH'},[]),span:c.colSpan||1,th:c.tagName==='TH'})));
+    const ncol=Math.max(1,...grid.map(r=>r.reduce((a,c)=>a+c.span,0)));
+    const mins=Array(ncol).fill(24),maxs=Array(ncol).fill(0);
+    grid.forEach(r=>{let ci=0;r.forEach(c=>{if(c.span===1){const m=measure(c.runs,size);mins[ci]=Math.max(mins[ci],m.min+2*pad);maxs[ci]=Math.max(maxs[ci],m.max+2*pad)}ci+=c.span})});
+    for(let i=0;i<ncol;i++)maxs[i]=Math.max(maxs[i],mins[i],.5*CW/ncol);
+    const sMax=maxs.reduce((a,b)=>a+b,0),sMin=mins.reduce((a,b)=>a+b,0);let widths;
+    if(sMax<=CW)widths=maxs.map(m=>m+(CW-sMax)*m/sMax);
+    else if(sMin>=CW)widths=mins.map(m=>m*CW/sMin);
+    else{const f=(CW-sMin)/(sMax-sMin);widths=mins.map((m,i)=>m+(maxs[i]-m)*f)}
+    y-=2;
+    grid.forEach((r,ri)=>{
+      let ci=0,x=M;
+      const cells=r.map(c=>{const w=widths.slice(ci,ci+c.span).reduce((a,b)=>a+b,0);const cell={th:c.th,x,w,lines:layout(c.runs,w-2*pad,size)};ci+=c.span;x+=w;return cell});
+      const n=Math.max(...cells.map(c=>c.lines.length));
+      const draw=(from,cnt,top)=>{
+        const h=cnt*lh+2*pad;
+        cells.forEach(c=>{
+          page.drawRectangle({x:c.x,y:top-h,width:c.w,height:h,borderColor:GREY,borderWidth:.5,...(c.th?{color:HEAD}:{})});
+          c.lines.slice(from,from+cnt).forEach((l,k)=>drawLine(l,c.x+pad,top-pad-(k+1)*lh+lh*.22,size,'left',c.w-2*pad));
+        });
+        return h;
+      };
+      const full=n*lh+2*pad;
+      if(ri===0&&r.every(c=>c.th)&&grid[1]){ /* keep a header row together with the first row under it */
+        let ci2=0,x2=M;const nx=Math.max(...grid[1].map(c=>{const w=widths.slice(ci2,ci2+c.span).reduce((a,b)=>a+b,0);ci2+=c.span;return layout(c.runs,w-2*pad,size).length}));
+        if(full+Math.min(nx*lh+2*pad,120)>y-M&&y<H-M-1)newPage();
+      }
+      if(full<=y-M){y-=draw(0,n,y);return}
+      if(full<=H-2*M){newPage();y-=draw(0,n,y);return}
+      let from=0;
+      while(from<n){
+        let fit=Math.floor((y-M-2*pad)/lh);if(fit<1){newPage();fit=Math.floor((y-M-2*pad)/lh)}
+        const cnt=Math.min(fit,n-from);y-=draw(from,cnt,y);from+=cnt;if(from<n)newPage();
+      }
+    });
+    y-=8;
+  }
+  const box=document.createElement('div');box.innerHTML=planForExport()+mapAppendix();
+  [...box.children].forEach(block);
+  const foot=`Management Plan - ${P.fields.landowner||P.name||''}`;
+  pages.forEach((pg,i)=>{
+    const t=safe(`${foot}    Page ${i+1} of ${pages.length}`),sz=7.5,wd=F.n.widthOfTextAtSize(t,sz);
+    pg.drawText(t,{x:(W-wd)/2,y:20,size:sz,font:F.n,color:GREY});
+  });
+  doc.setTitle(`Management Plan - ${P.fields.landowner||P.name||''}`);
+  doc.setCreator('Invasives Field Survey');
+  return doc.save();
+}
+$('bExportPdf').onclick=async()=>{
+  const b=$('bExportPdf'),old=b.textContent;b.disabled=true;b.textContent='Building PDF…';
+  try{const bytes=await buildPdf();download(`Management_Plan_${fname()}.pdf`,bytes,'application/pdf');toast('PDF saved to your Downloads')}
+  catch(e){console.error(e);toast('Could not build the PDF: '+(e.message||e))}
+  b.disabled=false;b.textContent=old;
 };
-window.addEventListener('afterprint',()=>{$('printArea').innerHTML='';document.title='Invasives Field Survey'});
 $('bExportDoc').onclick=()=>{
   const css='body{font-family:Calibri,Arial,sans-serif;font-size:10.5pt}table{border-collapse:collapse;width:100%;margin:8pt 0}td,th{border:1px solid #777;padding:4pt;vertical-align:top;text-align:left;font-size:9.5pt}th{background:#e8efe4}.warn{color:#9a1c1c;font-weight:bold}';
   const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Management Plan</title><style>${css}</style></head><body>${planForExport()}${mapAppendix()}</body></html>`;
