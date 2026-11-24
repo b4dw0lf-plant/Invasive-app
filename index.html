@@ -40,7 +40,7 @@ button.dng{color:var(--warn)}
 #sheet.on{display:block}
 #sheet h2{font-size:16px;margin:0 0 8px;display:flex;justify-content:space-between;align-items:center}
 label.l{display:block;font-size:12px;font-weight:700;color:var(--mute);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 4px}
-input[type=text],input[type=date],input[type=number],textarea,select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:var(--ink)}
+input[type=text],input[type=password],input[type=date],input[type=number],textarea,select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:var(--ink)}
 textarea{min-height:70px}
 .sw{display:flex;gap:8px;flex-wrap:wrap}
 .sw i{width:34px;height:34px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px var(--line);cursor:pointer}
@@ -85,10 +85,15 @@ textarea{min-height:70px}
  @page{margin:14mm}
 }
 #printArea{display:none}
+.tt{width:100%;border-collapse:collapse;font-size:13px}
+.tt th,.tt td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:right;vertical-align:top}
+.tt th:first-child,.tt td:first-child{text-align:left;min-width:120px}
+.tt th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+.sumbox{background:var(--brand2);border-radius:var(--r);padding:10px 12px;font-size:15px}
 </style>
 </head>
 <body>
-<header><h1 id="ptitle">Invasives Field Survey</h1><small id="gpsstat">GPS off</small></header>
+<header><h1 id="ptitle">Invasives Field Survey</h1><small id="cloudstat" style="margin-right:8px"></small><small id="gpsstat">GPS off</small></header>
 <main>
  <section class="tab on" id="tab-map">
   <div id="map"></div>
@@ -98,8 +103,10 @@ textarea{min-height:70px}
    <button id="bMarker" title="Add marker" aria-label="Add marker">📍</button>
    <button id="bPoly" title="Draw polygon" aria-label="Draw polygon">⬠</button>
    <button id="bLayer" title="Base map" aria-label="Base map">🛰</button>
+   <button id="bOffline" title="Save this area for offline use" aria-label="Save this area for offline use">⬇</button>
   </div>
   <div class="bar" id="drawbar"></div>
+  <div class="bar" id="dlbar"></div>
   <div id="sheet"></div>
  </section>
  <section class="tab" id="tab-species">
@@ -115,6 +122,17 @@ textarea{min-height:70px}
   </div>
   <p class="hint">The plan fills in from the species on your map. Cover, density and description cells are editable, and so is any text below. Edits to text are kept until you press Refresh.</p>
   <div id="plan"></div>
+ </section>
+ <section class="tab" id="tab-totals">
+  <div class="card"><h3>Species totals</h3>
+   <div class="row" id="tScope"><button class="btn pri" data-s="mine">This phone</button><button class="btn" data-s="all">Everyone (cloud)</button></div>
+   <input type="text" id="tq" placeholder="Filter by name, e.g. honeysuckle" style="margin-top:10px">
+   <div id="tSummary" style="margin-top:10px"></div>
+  </div>
+  <div class="card"><div class="tblwrap"><table class="tt" id="tTable"></table></div>
+   <div class="row" style="margin-top:10px"><button class="btn" id="tCsv">Export CSV</button></div>
+   <p class="hint" id="tNote"></p>
+  </div>
  </section>
  <section class="tab" id="tab-project">
   <div class="card"><h3>Property</h3>
@@ -149,6 +167,7 @@ textarea{min-height:70px}
     <button class="btn dng" id="bDelProj">Delete this one</button>
    </div>
   </div>
+  <div class="card" id="cloudcard"></div>
   <div class="card"><h3>Backup &amp; export map</h3>
    <div class="row">
     <button class="btn" id="bJson">Backup (.json)</button>
@@ -157,7 +176,8 @@ textarea{min-height:70px}
     <button class="btn" id="bGeo">GeoJSON</button>
    </div>
    <input type="file" id="importFile" accept=".json,application/json" hidden>
-   <p class="hint">Data is stored on this device. Back up regularly, and before clearing browser data.</p>
+   <p class="hint">Without cloud sync, data is stored on this device only. Back up regularly, and before clearing browser data.</p>
+   <p class="hint" id="lastBackup"></p>
   </div>
  </section>
 </main>
@@ -165,12 +185,14 @@ textarea{min-height:70px}
  <button data-t="map" class="on">Map</button>
  <button data-t="species">Species</button>
  <button data-t="plan">Plan</button>
+ <button data-t="totals">Totals</button>
  <button data-t="project">Property</button>
 </nav>
 <div id="printArea"></div>
 <input type="file" id="photoIn" accept="image/*" capture="environment" hidden>
 <input type="file" id="photoLib" accept="image/*" multiple hidden>
 
+<script src="config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 /* ========================= SPECIES & TREATMENT DATA =========================
@@ -231,7 +253,7 @@ const kvSet=(k,v)=>new Promise(r=>{const t=db.transaction('kv','readwrite');t.ob
 let S={projects:[],current:null}; // S.projects: [{id,name,fields,features,cover}]
 let P=null;
 const uid=()=>Math.random().toString(36).slice(2,10);
-let saveT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>kvSet('state',S),300)}
+let saveT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{kvSet('state',S);if(typeof scheduleSync==='function')scheduleSync()},300)}
 function newProject(name){return{id:uid(),name:name||'New property',fields:{programs:{}},features:[],cover:{},planEdits:null}}
 
 /* ========================= MAP ========================= */
@@ -690,12 +712,13 @@ $('projsel').onchange=e=>setProject(e.target.value);
 $('bNew').onclick=()=>{const p=newProject('New property');S.projects.push(p);setProject(p.id);show('map');toast('New property created')};
 $('bDelProj').onclick=function(){
   if(!this.dataset.sure){this.dataset.sure=1;this.textContent='Tap again to delete';setTimeout(()=>{delete this.dataset.sure;this.textContent='Delete this one'},3500);return}
+  (S.pendingDelete=S.pendingDelete||[]).push(P.id);
   S.projects=S.projects.filter(p=>p.id!==P.id);if(!S.projects.length)S.projects.push(newProject());setProject(S.projects[0].id);delete this.dataset.sure;this.textContent='Delete this one';
 };
-$('bJson').onclick=()=>download(`survey_backup_${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(S),'application/json');
+$('bJson').onclick=()=>{download(`survey_backup_${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(S),'application/json');kvSet('lastBackup',Date.now());showLastBackup(Date.now())};
 $('bImport').onclick=()=>$('importFile').click();
 $('importFile').onchange=async e=>{
-  try{const d=JSON.parse(await e.target.files[0].text());if(!d.projects)throw 0;S=d;setProject(S.current||S.projects[0].id);toast('Restored')}catch{toast('That file is not a valid backup')}
+  try{const d=JSON.parse(await e.target.files[0].text());if(!d.projects)throw 0;S=d;S.pendingDelete=S.pendingDelete||[];S.uploaded=S.uploaded||{};setProject(S.current||S.projects[0].id);toast('Restored')}catch{toast('That file is not a valid backup')}
   e.target.value='';
 };
 $('bGeo').onclick=()=>download(`${fname()}.geojson`,JSON.stringify({type:'FeatureCollection',features:P.features.map(f=>({type:'Feature',properties:{name:f.name,species:f.species.map(short).join('; '),density:f.density,notes:f.notes,color:f.color},geometry:f.type==='marker'?{type:'Point',coordinates:[f.coords[0][1],f.coords[0][0]]}:{type:'Polygon',coordinates:[[...f.coords,f.coords[0]].map(c=>[c[1],c[0]])]}}))}),'application/geo+json');
@@ -757,6 +780,243 @@ function renderAddCard(){
   if($('aExpS'))$('aExpS').onclick=()=>exportCSV('species_additions.csv',['common_name','botanical_name','group_id'],CUSTOM.species.map(s=>[s.common,s.botanical,(s.groups||[]).join(';')]));
   if($('aExpT'))$('aExpT').onclick=()=>exportCSV('treatments_additions.csv',['group_id','group_name','method','timing','warning','extra_note'],CUSTOM.treatments.map(t=>[t.id,t.name,t.method,t.timing,t.warning,t.note||'']));
 }
+/* ========================= CLOUD SYNC (optional; needs config.js + a free Supabase project) ========================= */
+const CFG=()=>window.CLOUD||{};
+const cloudOn=()=>!!(CFG().url&&CFG().anonKey);
+const cbase=()=>String(CFG().url).replace(/\/+$/,'');
+let AUTH=null,syncing=false,syncTimer=null,syncErr='',lastSyncAt=0;
+const SETUP_SQL="-- Invasives Field Survey: cloud setup\n-- Paste this whole script into Supabase > SQL Editor > New query, then tap Run.\n-- It is safe to run more than once.\n\n-- 1. Tables -----------------------------------------------------------------\ncreate table if not exists public.properties (\n  owner      uuid not null default auth.uid() references auth.users(id) on delete cascade,\n  id         text not null,\n  name       text,\n  county     text,\n  data       jsonb not null,\n  updated_at timestamptz not null default now(),\n  deleted    boolean not null default false,\n  primary key (owner, id)\n);\n\ncreate table if not exists public.survey_features (\n  owner       uuid not null default auth.uid() references auth.users(id) on delete cascade,\n  property_id text not null,\n  id          text not null,\n  kind        text not null check (kind in ('poly', 'marker')),\n  species     text[] not null default '{}',\n  density     text,\n  acres       numeric not null default 0,\n  county      text,\n  primary key (owner, property_id, id),\n  foreign key (owner, property_id) references public.properties (owner, id) on delete cascade\n);\n\ncreate index if not exists survey_features_species_idx on public.survey_features using gin (species);\n\n-- 2. Privacy: each surveyor can only read and write their own rows -----------\nalter table public.properties enable row level security;\nalter table public.survey_features enable row level security;\n\ndrop policy if exists \"own properties\" on public.properties;\ncreate policy \"own properties\" on public.properties\n  for all to authenticated\n  using (owner = auth.uid()) with check (owner = auth.uid());\n\ndrop policy if exists \"own features\" on public.survey_features;\ncreate policy \"own features\" on public.survey_features\n  for all to authenticated\n  using (owner = auth.uid()) with check (owner = auth.uid());\n\n-- 3. Save and delete a whole property in one step -----------------------------\ncreate or replace function public.save_property(\n  p_id text, p_name text, p_county text, p_data jsonb, p_features jsonb\n) returns timestamptz\nlanguage plpgsql security invoker set search_path = public as $$\ndeclare ts timestamptz := now();\nbegin\n  insert into public.properties (owner, id, name, county, data, updated_at, deleted)\n  values (auth.uid(), p_id, p_name, p_county, p_data, ts, false)\n  on conflict (owner, id) do update\n    set name = excluded.name, county = excluded.county, data = excluded.data,\n        updated_at = ts, deleted = false;\n\n  delete from public.survey_features where owner = auth.uid() and property_id = p_id;\n\n  insert into public.survey_features (owner, property_id, id, kind, species, density, acres, county)\n  select auth.uid(), p_id, t.f ->> 'id', t.f ->> 'kind',\n         array(select jsonb_array_elements_text(t.f -> 'species')),\n         t.f ->> 'density',\n         coalesce((t.f ->> 'acres')::numeric, 0),\n         p_county\n  from jsonb_array_elements(p_features) as t(f);\n\n  return ts;\nend $$;\n\ncreate or replace function public.delete_property(p_id text) returns void\nlanguage plpgsql security invoker set search_path = public as $$\nbegin\n  update public.properties set deleted = true, updated_at = now()\n   where owner = auth.uid() and id = p_id;\n  delete from public.survey_features where owner = auth.uid() and property_id = p_id;\nend $$;\n\n-- 4. Totals across everyone (counts only, no names, notes or locations) -------\ncreate or replace function public.species_totals()\nreturns table (species text, acres numeric, polygons bigint, markers bigint, properties bigint, surveyors bigint)\nlanguage sql stable security definer set search_path = public as $$\n  select s,\n         round(coalesce(sum(case when f.kind = 'poly' then f.acres end), 0), 2),\n         count(*) filter (where f.kind = 'poly'),\n         count(*) filter (where f.kind = 'marker'),\n         count(distinct f.owner::text || ':' || f.property_id),\n         count(distinct f.owner)\n  from public.survey_features f\n  cross join lateral unnest(f.species) as s\n  group by s\n  order by 2 desc, 1;\n$$;\n\n-- Total for any species whose name contains the search text (each polygon counted once)\ncreate or replace function public.species_match_total(q text)\nreturns table (acres numeric, polygons bigint, markers bigint, properties bigint, surveyors bigint)\nlanguage sql stable security definer set search_path = public as $$\n  select round(coalesce(sum(case when f.kind = 'poly' then f.acres end), 0), 2),\n         count(*) filter (where f.kind = 'poly'),\n         count(*) filter (where f.kind = 'marker'),\n         count(distinct f.owner::text || ':' || f.property_id),\n         count(distinct f.owner)\n  from public.survey_features f\n  where exists (select 1 from unnest(f.species) as s where s ilike '%' || q || '%');\n$$;\n\nrevoke all on function public.save_property(text, text, text, jsonb, jsonb) from public, anon;\nrevoke all on function public.delete_property(text) from public, anon;\nrevoke all on function public.species_totals() from public, anon;\nrevoke all on function public.species_match_total(text) from public, anon;\ngrant execute on function public.save_property(text, text, text, jsonb, jsonb) to authenticated;\ngrant execute on function public.delete_property(text) to authenticated;\ngrant execute on function public.species_totals() to authenticated;\ngrant execute on function public.species_match_total(text) to authenticated;\n\n-- 5. Private photo storage (each surveyor can only reach their own folder) ----\ninsert into storage.buckets (id, name, public) values ('photos', 'photos', false)\non conflict (id) do nothing;\n\ndrop policy if exists \"photos read own\" on storage.objects;\ncreate policy \"photos read own\" on storage.objects for select to authenticated\n  using (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);\n\ndrop policy if exists \"photos add own\" on storage.objects;\ncreate policy \"photos add own\" on storage.objects for insert to authenticated\n  with check (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);\n\ndrop policy if exists \"photos update own\" on storage.objects;\ncreate policy \"photos update own\" on storage.objects for update to authenticated\n  using (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);\n\ndrop policy if exists \"photos delete own\" on storage.objects;\ncreate policy \"photos delete own\" on storage.objects for delete to authenticated\n  using (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);\n";
+const dhash=str=>{let h=5381;for(let i=0;i<str.length;i++)h=((h<<5)+h+str.charCodeAt(i))|0;return (h>>>0).toString(36)+'-'+str.length};
+const phsig=d=>d.length+':'+d.slice(-40);
+const projHash=p=>dhash(JSON.stringify({name:p.name,fields:p.fields,cover:p.cover||{},planEdits:p.planEdits||null,features:p.features.map(f=>({...f,photos:(f.photos||[]).map(phsig)}))}));
+const isBlank=p=>!p.features.length&&!Object.entries(p.fields||{}).some(([k,v])=>k!=='programs'&&v)&&!Object.values((p.fields||{}).programs||{}).some(Boolean);
+const dirtyCount=()=>S.projects.filter(p=>projHash(p)!==p.syncedHash&&!(isBlank(p)&&!p.syncedAt)).length+(S.pendingDelete||[]).length;
+function setAuth(j){
+  AUTH={access_token:j.access_token,refresh_token:j.refresh_token,expires_at:j.expires_at||Math.floor(Date.now()/1000)+(j.expires_in||3600),
+    user:{id:(j.user&&j.user.id)||(AUTH&&AUTH.user.id),email:(j.user&&j.user.email)||(AUTH&&AUTH.user.email)}};
+  return kvSet('auth',AUTH);
+}
+async function ensureToken(){
+  if(!AUTH)throw new Error('Not signed in');
+  if(AUTH.expires_at*1000-Date.now()<60000){
+    const r=await fetch(cbase()+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:CFG().anonKey,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:AUTH.refresh_token})});
+    if(!r.ok){if(r.status===400||r.status===401){AUTH=null;await kvSet('auth',null);updateCloudUI()}throw new Error('Session expired. Please sign in again.')}
+    await setAuth(await r.json());
+  }
+  return AUTH.access_token;
+}
+async function api(path,o={}){
+  const tok=await ensureToken(),isBlob=o.body instanceof Blob;
+  const r=await fetch(cbase()+path,{method:o.method||'GET',headers:{apikey:CFG().anonKey,Authorization:'Bearer '+tok,...(o.body!==undefined&&!isBlob?{'Content-Type':'application/json'}:{}),...(o.headers||{})},body:o.body===undefined?undefined:(isBlob?o.body:JSON.stringify(o.body))});
+  if(!r.ok){let m='';try{const j=await r.json();m=j.message||j.error||''}catch{}throw Object.assign(new Error(m||('Server error '+r.status)),{status:r.status})}
+  if(o.raw)return r;
+  const t=await r.text();return t?JSON.parse(t):null;
+}
+async function cloudSignIn(email,pw){
+  const r=await fetch(cbase()+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:CFG().anonKey,'Content-Type':'application/json'},body:JSON.stringify({email,password:pw})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error_description||j.msg||j.message||'Sign-in failed');
+  await setAuth(j);
+}
+async function sha(str){
+  try{const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,40)}
+  catch{return dhash(str)}
+}
+const blobToDataURL=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(b)});
+async function uploadPhoto(h,dataUrl){
+  const blob=await (await fetch(dataUrl)).blob();
+  await api(`/storage/v1/object/photos/${AUTH.user.id}/${h}.jpg`,{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg','x-upsert':'true'}});
+}
+const PHOTO_CACHE={};
+async function getPhoto(h){
+  if(PHOTO_CACHE[h])return PHOTO_CACHE[h];
+  const r=await api(`/storage/v1/object/authenticated/photos/${AUTH.user.id}/${h}.jpg`,{raw:true});
+  return PHOTO_CACHE[h]=await blobToDataURL(await r.blob());
+}
+async function pushProject(p){
+  const hash=projHash(p),feats=[],dfeats=[];
+  for(const f of p.features){
+    const refs=[];
+    for(const d of (f.photos||[])){const h=await sha(d);if(!S.uploaded[h]){await uploadPhoto(h,d);S.uploaded[h]=1}PHOTO_CACHE[h]=d;refs.push(h)}
+    dfeats.push({...f,photos:refs});
+    feats.push({id:f.id,kind:f.type==='poly'?'poly':'marker',species:f.species,density:f.density||null,acres:f.type==='poly'?+areaAcres(f.coords).toFixed(4):0});
+  }
+  const data={name:p.name,fields:p.fields,cover:p.cover||{},planEdits:p.planEdits||null,planEditsFor:p.planEditsFor||null,features:dfeats};
+  const ts=await api('/rest/v1/rpc/save_property',{method:'POST',body:{p_id:p.id,p_name:p.fields.landowner||p.name,p_county:p.fields.county||null,p_data:data,p_features:feats}});
+  p.syncedHash=hash;p.syncedAt=ts;
+}
+async function fetchCloudProject(id,o={}){
+  const rows=await api(`/rest/v1/properties?owner=eq.${AUTH.user.id}&id=eq.${encodeURIComponent(id)}&select=id,data,updated_at`);
+  if(!rows||!rows.length)throw new Error('Property not found in the cloud');
+  const row=rows[0],d=row.data||{},features=[];
+  for(const f of d.features||[]){
+    const photos=[];
+    for(const h of f.photos||[]){try{photos.push(await getPhoto(h));S.uploaded[h]=1}catch(e){console.warn('photo',h,e)}}
+    features.push({...f,photos});
+  }
+  const p={id:o.newId||row.id,name:(d.name||'Property')+(o.suffix||''),fields:d.fields||{programs:{}},features,cover:d.cover||{},planEdits:d.planEdits||null,planEditsFor:d.planEditsFor||null};
+  if(o.suffix)p.fields={...p.fields,landowner:(p.fields.landowner||d.name||'Property')+o.suffix};
+  if(!o.newId){p.syncedAt=row.updated_at;p.syncedHash=projHash(p)}
+  return p;
+}
+async function syncNow(manual){
+  if(!cloudOn()||!AUTH||syncing)return;
+  if(!navigator.onLine){if(manual)toast('Offline. It will sync when you are back online.');return}
+  syncing=true;syncErr='';updateCloudUI();
+  try{
+    for(let pass=0;pass<2;pass++){
+      const metas=await api('/rest/v1/properties?select=id,updated_at,deleted');
+      const meta=Object.fromEntries(metas.map(m=>[m.id,m]));
+      for(const id of [...(S.pendingDelete||[])]){
+        if(meta[id]&&!meta[id].deleted){await api('/rest/v1/rpc/delete_property',{method:'POST',body:{p_id:id}});meta[id]={...meta[id],deleted:true}}
+        S.pendingDelete=S.pendingDelete.filter(x=>x!==id);
+      }
+      let changed=false;
+      /* a brand-new phone starts with one empty property: drop it once real properties exist in the cloud */
+      if(S.projects.length===1&&isBlank(S.projects[0])&&!S.projects[0].syncedAt&&metas.some(m=>!m.deleted)){S.projects=[];changed=true}
+      const localIds=new Set(S.projects.map(p=>p.id)),currentId=S.current;let replacedCurrent=false;
+      for(const p of [...S.projects]){
+        const m=meta[p.id],dirty=projHash(p)!==p.syncedHash;
+        if(!m||m.deleted){if(!(isBlank(p)&&!p.syncedAt)&&(!m||dirty||!p.syncedAt)){await pushProject(p);changed=true}continue}
+        const cloudChanged=p.syncedAt!==m.updated_at;
+        if(dirty&&!cloudChanged){await pushProject(p);changed=true}
+        else if(!dirty&&cloudChanged){
+          const h0=projHash(p),np=await fetchCloudProject(p.id);
+          if(projHash(p)===h0){const i=S.projects.indexOf(p);if(i>=0){S.projects[i]=np;if(p.id===currentId)replacedCurrent=true}changed=true}
+        }else if(dirty&&cloudChanged){
+          const cp=await fetchCloudProject(p.id,{newId:uid(),suffix:' (copy from another device)'});
+          S.projects.push(cp);await pushProject(p);changed=true;
+        }
+      }
+      for(const m of metas){if(!m.deleted&&!localIds.has(m.id)&&!(S.pendingDelete||[]).includes(m.id)){S.projects.push(await fetchCloudProject(m.id));changed=true}}
+      if(!S.projects.length)S.projects.push(newProject('My first property'));
+      if(replacedCurrent||!S.projects.some(x=>x.id===currentId)){P=S.projects.find(x=>x.id===currentId)||S.projects[0];S.current=P.id;loadFields();redrawAll()}
+      await kvSet('state',S);
+      if(!changed||!S.projects.some(p=>projHash(p)!==p.syncedHash&&!(isBlank(p)&&!p.syncedAt)))break;
+    }
+    lastSyncAt=Date.now();await kvSet('lastSync',lastSyncAt);
+    loadFields();if(manual)toast('Synced');
+  }catch(e){console.error(e);syncErr=e.message||String(e);if(manual)toast('Sync problem: '+syncErr)}
+  syncing=false;updateCloudUI();
+}
+function scheduleSync(delay=5000){
+  if(!cloudOn()||!AUTH)return;
+  clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncNow(false),delay);
+  updateCloudUI();
+}
+window.addEventListener('online',()=>scheduleSync(1500));
+function updateCloudUI(){
+  const e=$('cloudstat');if(!e)return;
+  if(!cloudOn())e.textContent='';
+  else if(!AUTH)e.textContent='☁ sign in';
+  else if(syncing)e.textContent='☁ syncing…';
+  else if(syncErr)e.textContent='☁ error';
+  else{const n=dirtyCount();e.textContent=n?`☁ ${n} waiting`:'☁ synced'}
+  if($('cloudcard')&&$('tab-project').classList.contains('on'))renderCloudCard();
+}
+function renderCloudCard(){
+  const c=$('cloudcard');if(!c)return;
+  if(!cloudOn()){
+    c.innerHTML=`<h3>Cloud backup &amp; shared totals</h3><p class="hint">Not set up yet. Cloud sync keeps your surveys safe if you clear your browser, syncs your phones, and adds up species acreage across everyone's surveys.</p><div class="row"><button class="btn" id="cCopy">Copy setup SQL</button></div><textarea id="cSql" readonly hidden style="margin-top:8px"></textarea><p class="hint">Setup: create a free Supabase project, paste this SQL into its SQL Editor, then put the project URL and anon key into config.js in your GitHub repository.</p>`;
+    $('cCopy').onclick=async()=>{try{await navigator.clipboard.writeText(SETUP_SQL);toast('SQL copied')}catch{const t=$('cSql');t.hidden=false;t.value=SETUP_SQL;t.select();toast('Select all and copy')}};
+    return;
+  }
+  if(!AUTH){
+    c.innerHTML=`<h3>Cloud backup &amp; shared totals</h3><label class="l" for="c_email">Email</label><input type="text" id="c_email" autocomplete="username" inputmode="email" autocapitalize="off"><label class="l" for="c_pw">Password</label><input type="password" id="c_pw" autocomplete="current-password"><div class="row" style="margin-top:10px"><button class="btn pri" id="cIn">Sign in</button></div><p class="hint" id="cMsg">Properties already on this phone upload the first time you sign in.</p>`;
+    $('cIn').onclick=async()=>{const b=$('cIn');b.disabled=true;$('cMsg').textContent='Signing in…';
+      try{await cloudSignIn($('c_email').value.trim(),$('c_pw').value);updateCloudUI();syncNow(true)}catch(e){$('cMsg').textContent=e.message;b.disabled=false}};
+    return;
+  }
+  const n=dirtyCount(),when=lastSyncAt?new Date(lastSyncAt).toLocaleString():'not yet';
+  c.innerHTML=`<h3>Cloud backup &amp; shared totals</h3><p>Signed in as <b>${esc(AUTH.user.email||'')}</b></p><p class="hint">${syncing?'Syncing…':syncErr?'Last problem: '+esc(syncErr):n?`${n} change${n>1?'s':''} waiting to sync`:'Everything is saved to the cloud'}. Last sync: ${esc(when)}.</p><div class="row"><button class="btn pri" id="cSync">Sync now</button><button class="btn" id="cOut">Sign out</button></div><p class="hint">Signing out keeps the surveys on this phone.</p>`;
+  $('cSync').onclick=()=>syncNow(true);
+  $('cOut').onclick=async()=>{AUTH=null;await kvSet('auth',null);updateCloudUI();renderCloudCard()};
+}
+function showLastBackup(t){const e=$('lastBackup');if(e)e.textContent=t?'Last backup file saved: '+new Date(t).toLocaleDateString():'No backup file saved yet.'}
+
+/* ========================= TOTALS ========================= */
+const TOT={scope:'mine',q:'',rows:[],sum:null,note:''};
+function localTotals(q){
+  const per={},u={acres:0,polygons:0,markers:0,props:new Set()};
+  S.projects.forEach(p=>p.features.forEach(f=>{
+    const poly=f.type==='poly',ac=poly?areaAcres(f.coords):0;
+    f.species.forEach(sp=>{const o=per[sp]=per[sp]||{species:sp,acres:0,polygons:0,markers:0,props:new Set()};o.acres+=ac;poly?o.polygons++:o.markers++;o.props.add(p.id)});
+    if(q&&f.species.some(x=>x.toLowerCase().includes(q))){u.acres+=ac;poly?u.polygons++:u.markers++;u.props.add(p.id)}
+  }));
+  const rows=Object.values(per).map(o=>({species:o.species,acres:o.acres,polygons:o.polygons,markers:o.markers,properties:o.props.size}));
+  return {rows,sum:q?{acres:u.acres,polygons:u.polygons,markers:u.markers,properties:u.props.size}:null};
+}
+async function renderTotals(){
+  const scope=TOT.scope,q=TOT.q.trim().toLowerCase();
+  $('tScope').querySelectorAll('button').forEach(b=>b.classList.toggle('pri',b.dataset.s===scope));
+  let rows=[],sum=null,note='';
+  if(scope==='mine'){const r=localTotals(q);rows=r.rows;sum=r.sum;note='Every property saved on this phone.'}
+  else{
+    if(!cloudOn()||!AUTH){$('tSummary').innerHTML='<p class="hint">Sign in to cloud sync on the Property tab to see totals for everyone.</p>';$('tTable').innerHTML='';$('tNote').textContent='';return}
+    let cache=await kvGet('totalsCache'),at=cache&&cache.at;rows=cache?cache.rows:[];
+    if(navigator.onLine){
+      try{rows=await api('/rest/v1/rpc/species_totals',{method:'POST',body:{}});at=Date.now();kvSet('totalsCache',{rows,at});
+        if(q.length>=2){const r=await api('/rest/v1/rpc/species_match_total',{method:'POST',body:{q}});sum=r&&r[0]||null}}
+      catch(e){note='Could not reach the cloud ('+e.message+'). '}
+    }else note='Offline. ';
+    note+=at?'Totals for every surveyor, as of '+new Date(at).toLocaleString()+'.':'No totals downloaded yet.';
+  }
+  rows=rows.filter(r=>!q||r.species.toLowerCase().includes(q)).sort((a,b)=>b.acres-a.acres||a.species.localeCompare(b.species));
+  TOT.rows=rows;TOT.sum=sum;
+  const f1=n=>(+n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  $('tSummary').innerHTML=sum?`<div class="sumbox"><b>${f1(sum.acres)} acres</b> mapped for "${esc(TOT.q.trim())}"<br><span class="hint">${sum.polygons} polygon${sum.polygons==1?'':'s'}, ${sum.markers} marker${sum.markers==1?'':'s'}, ${sum.properties} propert${sum.properties==1?'y':'ies'}${sum.surveyors!=null?', '+sum.surveyors+' surveyor'+(sum.surveyors==1?'':'s'):''}. Each polygon is counted once, even if it lists several matching species.</span></div>`:(q?'':'<p class="hint">Type a name such as "honeysuckle" for a combined total across all matching species.</p>');
+  const cloud=scope==='all';
+  $('tTable').innerHTML=`<tr><th>Species</th><th>Acres</th><th>Polys</th><th>Pins</th><th>Props</th>${cloud?'<th>Users</th>':''}</tr>`+(rows.length?rows.map(r=>`<tr><td>${esc(r.species)}</td><td>${f1(r.acres)}</td><td>${r.polygons}</td><td>${r.markers}</td><td>${r.properties}</td>${cloud?`<td>${r.surveyors??''}</td>`:''}</tr>`).join(''):`<tr><td colspan="${cloud?6:5}" class="hint">No species mapped yet.</td></tr>`);
+  $('tNote').textContent=note+' Acres are the total area of polygons where the species was recorded. Polygons that overlap are each counted in full.';
+}
+$('tScope').onclick=e=>{const s=e.target.dataset.s;if(s){TOT.scope=s;renderTotals()}};
+let tqT;$('tq').oninput=e=>{TOT.q=e.target.value;clearTimeout(tqT);tqT=setTimeout(renderTotals,350)};
+$('tCsv').onclick=()=>{const cloud=TOT.scope==='all';exportCSV(`species_totals_${TOT.scope}.csv`,['species','acres','polygons','markers','properties',...(cloud?['surveyors']:[])],TOT.rows.map(r=>[r.species,(+r.acres).toFixed(2),r.polygons,r.markers,r.properties,...(cloud?[r.surveyors??'']:[])]))};
+
+/* ========================= OFFLINE MAP AREA ========================= */
+const TILE_CACHE='invasive-tiles-v1';
+const tileXY=(lat,lng,z)=>{const n=2**z,s=Math.sin(lat*Math.PI/180);return{x:Math.floor((lng+180)/360*n),y:Math.floor((.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n)}};
+const tileUrl=(z,x,y)=>`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+function planTiles(){
+  const b=map.getBounds(),z0=Math.max(1,Math.min(18,Math.round(map.getZoom()))),MAX=1500,list=[];
+  for(let z=z0;z<=18;z++){
+    const a=tileXY(b.getNorth(),b.getWest(),z),c=tileXY(b.getSouth(),b.getEast(),z),n=(c.x-a.x+1)*(c.y-a.y+1);
+    if(list.length+n>MAX){if(z===z0)return{tooBig:true};break}
+    for(let x=a.x;x<=c.x;x++)for(let y=a.y;y<=c.y;y++)list.push([z,x,y]);
+  }
+  return{list,z0,zmax:list[list.length-1][0]};
+}
+function saveArea(){
+  const bar=$('dlbar');
+  if(bar.classList.contains('on')){bar.classList.remove('on');return}
+  if(!('caches' in window)){toast('This browser cannot save maps offline');return}
+  if(base!=='sat'){toast('Switch to satellite first (🛰 button)');return}
+  if(!navigator.onLine){toast('You need a connection to download map tiles');return}
+  const pl=planTiles();if(pl.tooBig){toast('Area too large. Zoom in on your property and try again.');return}
+  const {list,z0,zmax}=pl,mb=Math.max(1,Math.round(list.length*.022));
+  bar.classList.add('on');
+  bar.innerHTML=`<div class="msg">Save the satellite map for this view (zoom ${z0} to ${zmax}) for offline use? About ${list.length} tiles, roughly ${mb} MB.</div><button class="btn pri" id="dlGo">Download</button><button class="btn" id="dlNo">Cancel</button>`;
+  $('dlNo').onclick=()=>bar.classList.remove('on');
+  $('dlGo').onclick=async()=>{
+    let idx=0,done=0,fail=0,stop=false,bad=false;
+    bar.innerHTML=`<div class="msg" id="dlMsg">Saving 0 / ${list.length}…</div><button class="btn" id="dlStop">Stop</button>`;
+    $('dlStop').onclick=()=>{stop=true};
+    const cache=await caches.open(TILE_CACHE);
+    const worker=async()=>{
+      while(!stop){
+        const t=list[idx++];if(!t)return;const url=tileUrl(t[0],t[1],t[2]);
+        try{if(!(await cache.match(url,{ignoreVary:true}))){const r=await fetch(url,{mode:'cors',credentials:'omit'});if(!r.ok)throw new Error('bad');await cache.put(url,r)}}
+        catch(e){fail++;if(fail>=8&&done<8){stop=true;bad=true}}
+        done++;const m=$('dlMsg');if(m)m.textContent=`Saving ${Math.min(done,list.length)} / ${list.length}…`;
+      }
+    };
+    await Promise.all(Array.from({length:6},worker));
+    bar.classList.remove('on');
+    toast(bad?'The map provider did not allow saving tiles':stop?'Stopped. Saved tiles are kept.':`Saved ${list.length-fail} tiles for offline use`+(fail?` (${fail} failed)`:''));
+  };
+}
+$('bOffline').onclick=saveArea;
+
 /* ========================= NAV & INIT ========================= */
 function show(t){
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
@@ -764,6 +1024,8 @@ function show(t){
   if(t==='map')setTimeout(()=>map.invalidateSize(),50);
   if(t==='species'){renderAddCard();renderSpeciesTab()}
   if(t==='plan')renderPlan();
+  if(t==='totals')renderTotals();
+  if(t==='project'){renderCloudCard();kvGet('lastBackup').then(showLastBackup)}
 }
 document.querySelector('nav').onclick=e=>{const t=e.target.dataset.t;if(t)show(t)};
 $('spq').oninput=renderSpeciesTab;
@@ -777,11 +1039,15 @@ $('photoIn').onchange=onPhotos;$('photoLib').onchange=onPhotos;
   CUSTOM=(await kvGet('custom'))||CUSTOM;await loadData();
   const saved=await kvGet('state');
   if(saved&&saved.projects&&saved.projects.length)S=saved;else{S.projects=[newProject('My first property')];S.current=S.projects[0].id}
+  S.pendingDelete=S.pendingDelete||[];S.uploaded=S.uploaded||{};
+  AUTH=(await kvGet('auth'))||null;
   initMap();
   P=S.projects.find(p=>p.id===S.current)||S.projects[0];
   loadFields();redrawAll();startGPS();
   if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
   if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
+  updateCloudUI();if(AUTH)scheduleSync(2500);
+  kvGet('lastBackup').then(showLastBackup);
 })();
 </script>
 </body>
