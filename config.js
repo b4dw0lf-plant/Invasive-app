@@ -4,5 +4,5 @@
      anonKey = the "anon public" key (never the "service_role" key)            */
 window.CLOUD = {
   url: '',
-  anonKey: ''
+  anonKey: 'sb_publishable_Pkk5swUEDgnPV_7oIE9wtQ_uzfqXYoQ'
 };
