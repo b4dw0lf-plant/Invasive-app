@@ -139,7 +139,7 @@ textarea{min-height:70px}
    <label class="l" for="f_address">Address</label><input type="text" id="f_address">
    <div class="grid2">
     <div><label class="l" for="f_county">County</label><input type="text" id="f_county"></div>
-    <div><label class="l" for="f_area">Area (ac.)</label><input type="text" id="f_area" placeholder="auto from polygons"></div>
+    <div><label class="l" for="f_area">Area (ac.)</label><input type="text" id="f_area" placeholder="auto from boundary"></div>
     <div><label class="l" for="f_lat">Latitude</label><input type="text" id="f_lat" placeholder="auto"></div>
     <div><label class="l" for="f_lon">Longitude</label><input type="text" id="f_lon" placeholder="auto"></div>
     <div><label class="l" for="f_visit">Site visit date</label><input type="date" id="f_visit"></div>
@@ -277,7 +277,7 @@ function drawFeature(f){
   if(layers[f.id])map.removeLayer(layers[f.id]);
   let l;
   if(f.type==='marker'){l=L.marker(f.coords[0],{icon:pinIcon(f.color),interactive:false,keyboard:false})}
-  else{l=L.polygon(f.coords,{color:f.color,weight:3,fillColor:f.color,fillOpacity:f.fill===false?0:.3,interactive:false})}
+  else{l=L.polygon(f.coords,{color:f.color,weight:3,fillColor:f.color,fillOpacity:f.fill===false?0:.3,dashArray:f.boundary?'10 6':null,interactive:false})}
   l.addTo(map);layers[f.id]=l;
 }
 function applyOrder(){P.features.forEach(x=>{if(x.type==='poly'&&layers[x.id])layers[x.id].bringToFront()})}
@@ -357,7 +357,7 @@ function areaAcres(coords){
   for(let i=0;i<p.length;i++){const j=(i+1)%p.length;a+=p[i][0]*p[j][1]-p[j][0]*p[i][1]}
   return Math.abs(a)/2/4046.86;
 }
-function refreshAreaInfo(f){const e=$('areainfo');if(e&&f.type==='poly')e.textContent='Area: '+areaAcres(f.coords).toFixed(2)+' ac'}
+function refreshAreaInfo(f){updateAreaHint();const e=$('areainfo');if(e&&f.type==='poly')e.textContent='Area: '+areaAcres(f.coords).toFixed(2)+' ac'}
 function selectFeature(id){
   const f=P.features.find(x=>x.id===id);if(!f)return;
   sel=id;showVtx(f);renderSheet(f);
@@ -387,7 +387,7 @@ function featLabel(f){return f.name||(f.species.length?f.species.map(short).join
 function showChooser(h){
   sel=null;clearVtx();const sh=$('sheet');sh.classList.add('on');
   sh.innerHTML=`<h2><span>Several layers here. Pick one:</span><button class="btn" id="cClose">Cancel</button></h2>`+
-   h.map(f=>`<div class="pick" data-id="${f.id}" style="display:flex;gap:10px;align-items:center;padding:12px 4px;border-top:1px solid var(--line)"><i style="width:22px;height:22px;border-radius:50%;background:${f.color};flex:none"></i><span style="flex:1;min-width:0"><b>${esc(featLabel(f))}</b><br><span class="hint">${f.type==='poly'?'Polygon, '+areaAcres(f.coords).toFixed(2)+' ac':'Marker'}</span></span></div>`).join('');
+   h.map(f=>`<div class="pick" data-id="${f.id}" style="display:flex;gap:10px;align-items:center;padding:12px 4px;border-top:1px solid var(--line)"><i style="width:22px;height:22px;border-radius:50%;background:${f.color};flex:none"></i><span style="flex:1;min-width:0"><b>${esc(featLabel(f))}</b><br><span class="hint">${f.type==='poly'?(f.boundary?'Property boundary, ':'Polygon, ')+areaAcres(f.coords).toFixed(2)+' ac':'Marker'}</span></span></div>`).join('');
   $('cClose').onclick=closeSheet;
   sh.querySelectorAll('.pick').forEach(d=>d.onclick=()=>selectFeature(d.dataset.id));
 }
@@ -399,12 +399,15 @@ function renderSheet(f){
   <h2><span>${f.type==='marker'?'Marker':'Polygon'}<span class="hint" id="areainfo" style="font-weight:400;margin-left:8px">${f.type==='poly'?'Area: '+areaAcres(f.coords).toFixed(2)+' ac':ll}</span></span><button class="btn" id="sClose">Done</button></h2>
   <label class="l" for="sName">Label</label><input type="text" id="sName" value="${esc(f.name)}" placeholder="e.g. NE woodlot honeysuckle">
   <label class="l">Color</label><div class="sw" id="sColors">${COLORS.map(c=>`<i data-c="${c}" style="background:${c}" class="${c===f.color?'on':''}"></i>`).join('')}</div>
+  ${f.type==='poly'?`<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-weight:600"><input type="checkbox" id="sBound" ${f.boundary?'checked':''}> This is the property boundary</label><p class="hint" style="margin:4px 0 0">Sets the property acreage in the plan. The boundary is drawn dashed and does not count as a species area. Mark each parcel's outline if the property has more than one.</p>`:''}
+  <div id="spBlock" ${f.boundary?'hidden':''}>
   <label class="l">Species present</label>
   <div class="chips" id="sChips"></div>
   <input type="text" id="sSearch" placeholder="Search species to add…">
   <div class="splist" id="sList"></div>
   <label class="l" for="sDens">Density here</label>
   <select id="sDens">${['low','medium','high'].map(d=>`<option ${f.density===d?'selected':''}>${d}</option>`).join('')}</select>
+  </div>
   <label class="l" for="sNotes">Notes</label><textarea id="sNotes">${esc(f.notes)}</textarea>
   <label class="l">Photos</label>
   <div class="row"><button class="btn" id="sCam">Take photo</button><button class="btn" id="sLib">Add from library</button></div>
@@ -423,6 +426,13 @@ function renderSheet(f){
   $('sDel').onclick=()=>{
     if($('sDel').dataset.sure){map.removeLayer(layers[f.id]);delete layers[f.id];P.features=P.features.filter(x=>x.id!==f.id);closeSheet();save();return}
     $('sDel').dataset.sure=1;$('sDel').textContent='Tap again to delete';
+  };
+  if($('sBound'))$('sBound').onchange=e=>{
+    f.boundary=e.target.checked;
+    if(f.boundary){f.fill=false;f.color='#e6c200';if(!f.name)f.name='Property boundary';P.features=[f].concat(P.features.filter(x=>x!==f))}
+    else{delete f.fill;if(f.name==='Property boundary')f.name=''}
+    P.planEdits=null;drawFeature(f);applyOrder();showVtx(f);updateAreaHint();save();renderSheet(f);
+    toast(f.boundary?`Boundary set: ${areaAcres(f.coords).toFixed(1)} acres`:'Boundary cleared');
   };
   if($('sFront')){
     $('sFront').onclick=()=>{P.features=P.features.filter(x=>x!==f).concat(f);applyOrder();save();toast('Brought to front')};
@@ -453,9 +463,11 @@ async function onPhotos(e){
   e.target.value='';save();if(sel===f.id)fillPhotos(f);toast('Photo added');
 }
 /* ========================= SPECIES TAB ========================= */
+const boundaryAcres=p=>p.features.filter(f=>f.type==='poly'&&f.boundary).reduce((a,f)=>a+areaAcres(f.coords),0);
+function updateAreaHint(){const e=$('f_area');if(!e||!P)return;const a=boundaryAcres(P);e.placeholder=a?`auto: ${a.toFixed(1)} ac from boundary`:'auto: mark a polygon as the property boundary'}
 function mappedSpecies(){
   const m={};
-  P.features.forEach(f=>f.species.forEach(s=>{(m[s]=m[s]||{n:0,acres:0,dens:0,f:[]}); const o=m[s];o.n++;o.f.push(f);if(f.type==='poly')o.acres+=areaAcres(f.coords);o.dens=Math.max(o.dens,['low','medium','high'].indexOf(f.density)+1)}));
+  P.features.forEach(f=>f.boundary?0:f.species.forEach(s=>{(m[s]=m[s]||{n:0,acres:0,dens:0,f:[]}); const o=m[s];o.n++;o.f.push(f);if(f.type==='poly')o.acres+=areaAcres(f.coords);o.dens=Math.max(o.dens,['low','medium','high'].indexOf(f.density)+1)}));
   return m;
 }
 function renderSpeciesTab(){
@@ -471,9 +483,9 @@ const F=id=>$(id).value||'';
 const fdate=v=>v?new Date(v+'T12:00:00').toLocaleDateString('en-US'):'';
 function buildPlan(){
   const m=mappedSpecies(),ks=SPECIES.filter(s=>m[s]),fl=P.fields;
-  const totalAc=parseFloat(fl.area)||P.features.filter(f=>f.type==='poly').reduce((a,f)=>a+areaAcres(f.coords),0);
+  const totalAc=parseFloat(fl.area)||boundaryAcres(P);
   const prog=PROGRAMS.map(p=>`<tr><td><b>${esc(p)}</b></td><td>${fl.programs[p]?'☒ '+esc(fl.programs[p]===true?'':fl.programs[p]):''}</td></tr>`).join('')+`<tr><td><b>Other:</b></td><td>${esc(fl.otherprog||'')}</td></tr>`;
-  const c=ll=>{const pts=P.features.flatMap(f=>f.coords);if(!pts.length)return'';return ll==='lat'?(pts.reduce((a,p)=>a+p[0],0)/pts.length).toFixed(5):(pts.reduce((a,p)=>a+p[1],0)/pts.length).toFixed(5)};
+  const c=ll=>{const bf=P.features.filter(f=>f.boundary),pts=(bf.length?bf:P.features).flatMap(f=>f.coords);if(!pts.length)return'';return ll==='lat'?(pts.reduce((a,p)=>a+p[0],0)/pts.length).toFixed(5):(pts.reduce((a,p)=>a+p[1],0)/pts.length).toFixed(5)};
   let h=`<h2 style="text-align:center">Indiana Invasives Initiative (III) Landowner Assistance Form</h2>
   <p><b>DISCLAIMER:</b> SICIM (State of Indiana Cooperative Invasives Management), which manages the III, is not a cost-share program. As a non-profit, SICIM can connect a landowner to both state and local funding so a landowner can place an application (if available).</p>
   <p><b>DISCLAIMER:</b> Landowners must abide by all federal and state cost-share programs in which they are enrolled. Those cost-share programs trump any guidance provided in this report. The landowner is responsible for knowing all management plans provided by federal and state agencies. SICIM is not privy to that information and therefore is not liable to any recommendations in those plans.</p>
@@ -526,7 +538,7 @@ function renderPlan(){
   if(P.planEdits&&P.planEditsFor===signature()){p.innerHTML=P.planEdits}else{p.innerHTML=buildPlan();P.planEdits=null}
   p.contentEditable='true';
 }
-function signature(){return JSON.stringify(P.features.map(f=>[f.id,f.species,f.density,f.coords.length]))+JSON.stringify(P.fields)}
+function signature(){return JSON.stringify(P.features.map(f=>[f.id,f.species,f.density,f.coords.length,!!f.boundary]))+JSON.stringify(P.fields)}
 $('plan').addEventListener('input',e=>{
   const t=e.target;
   if(t.dataset&&t.dataset.sp){const c=P.cover[t.dataset.sp]=P.cover[t.dataset.sp]||{};c[t.dataset.k]=t.value;save();return}
@@ -546,6 +558,28 @@ const fname=()=>(P.fields.landowner||P.name||'property').replace(/[^\w\-]+/g,'_'
 function loadPdfLib(){
   if(window.PDFLib)return Promise.resolve();
   return new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='pdf-lib.min.js';sc.onload=res;sc.onerror=()=>rej(new Error('pdf-lib.min.js is missing from the site. Upload it to the repository.'));document.head.appendChild(sc)});
+}
+/* ---- satellite backdrop for the PDF map (tiles come from the saved offline copy first, then the network) ---- */
+async function mapBackdrop(e){
+  if(typeof document==='undefined'||!('caches' in window))return null;
+  let z=Math.max(8,Math.min(19,Math.floor(Math.log2(1500*156543.03392*e.cos0/e.wM)))),tx0,tx1,ty0,ty1;
+  for(;;){const n=2**z;tx0=Math.floor(e.ux0*n/256);tx1=Math.floor((e.ux1*n-1e-6)/256);ty0=Math.floor(e.uy0*n/256);ty1=Math.floor((e.uy1*n-1e-6)/256);
+    if((tx1-tx0+1)*(ty1-ty0+1)<=80||z<=8)break;z--}
+  const n=2**z,cv=document.createElement('canvas');cv.width=Math.max(1,Math.round((e.ux1-e.ux0)*n));cv.height=Math.max(1,Math.round((e.uy1-e.uy0)*n));
+  const ctx=cv.getContext('2d');
+  const bitmap=async(x,y)=>{
+    const url=tileUrl(z,x,y);
+    try{const c=await caches.open(TILE_CACHE),hit=await c.match(url,{ignoreVary:true});if(hit){const bl=await hit.blob();if(bl.size)return await createImageBitmap(bl)}}catch(_){}
+    const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),8000);
+    try{const r=await fetch(url,{mode:'cors',credentials:'omit',signal:ctl.signal});if(!r.ok)throw new Error('tile');const bl=await r.blob();
+      try{(await caches.open(TILE_CACHE)).put(url,new Response(bl))}catch(_){}
+      return await createImageBitmap(bl)}finally{clearTimeout(to)}
+  };
+  const jobs=[];for(let x=tx0;x<=tx1;x++)for(let y=ty0;y<=ty1;y++)jobs.push([x,y]);
+  let i=0,fail=false;
+  await Promise.all(Array.from({length:8},async()=>{while(!fail){const j=jobs[i++];if(!j)return;
+    try{ctx.drawImage(await bitmap(j[0],j[1]),j[0]*256-e.ux0*n,j[1]*256-e.uy0*n)}catch(_){fail=true}}}));
+  return fail?null:{canvas:cv,z};
 }
 async function buildPdf(){
   await loadPdfLib();
@@ -664,8 +698,81 @@ async function buildPdf(){
     });
     y-=8;
   }
-  const box=document.createElement('div');box.innerHTML=planForExport()+mapAppendix();
+  const hexRgb=h=>{const v=parseInt(String(h||'#000000').replace('#',''),16)||0;return rgb((v>>16&255)/255,(v>>8&255)/255,(v&255)/255)};
+  async function mapSection(){
+    const feats=P.features,pts=feats.flatMap(f=>f.coords);
+    const lats=pts.map(p=>p[0]),lngs=pts.map(p=>p[1]);
+    const minLat=Math.min(...lats),maxLat=Math.max(...lats),minLng=Math.min(...lngs),maxLng=Math.max(...lngs);
+    const cLat=(minLat+maxLat)/2,cLng=(minLng+maxLng)/2,cos0=Math.cos(cLat*Math.PI/180);
+    const spanLat=Math.max((maxLat-minLat)*1.14,150/110540),spanLng=Math.max((maxLng-minLng)*1.14,150/(111320*cos0));
+    const wM=spanLng*111320*cos0,hM=spanLat*110540,sc=Math.min(CW/wM,440/hM),boxW=wM*sc,boxH=hM*sc;
+    const ux=lng=>(lng+180)/360*256,uy=lat=>{const sn=Math.sin(lat*Math.PI/180);return(.5-Math.log((1+sn)/(1-sn))/(4*Math.PI))*256};
+    const ux0=ux(cLng-spanLng/2),ux1=ux(cLng+spanLng/2),uy0=uy(cLat+spanLat/2),uy1=uy(cLat-spanLat/2);
+    const gx=lng=>(ux(lng)-ux0)/(ux1-ux0)*boxW,gy=lat=>(uy(lat)-uy0)/(uy1-uy0)*boxH;
+    let img=null;
+    try{const bd=await mapBackdrop({ux0,ux1,uy0,uy1,wM,cos0});
+      if(bd){const bl=await new Promise(r=>bd.canvas.toBlob(r,'image/jpeg',.85));img=await doc.embedJpg(new Uint8Array(await bl.arrayBuffer()))}}
+    catch(e){console.warn('map imagery unavailable',e)}
+    newPage();
+    page.drawText('Property Map',{x:M,y:y-13,size:13.5,font:F.b,color:BLACK});y-=22;
+    const ba=parseFloat(P.fields.area)||boundaryAcres(P);
+    const sub=[[P.fields.landowner||P.name,P.fields.address].filter(Boolean).join(' - '),ba?`Property area ${ba.toFixed(1)} acres`:''].filter(Boolean).join('  |  ');
+    if(sub)layout([{t:sub}],CW,8.5).forEach(l=>{y-=11;drawLine(l,M,y,8.5,'left',CW)});
+    y-=8;
+    const bx=M+(CW-boxW)/2,top=y,bot=top-boxH,WHITE=rgb(1,1,1);
+    if(img)page.drawImage(img,{x:bx,y:bot,width:boxW,height:boxH});
+    else page.drawRectangle({x:bx,y:bot,width:boxW,height:boxH,color:rgb(.95,.96,.93)});
+    const pathOf=c=>c.map((p,i)=>`${i?'L':'M'} ${gx(p[1]).toFixed(2)} ${gy(p[0]).toFixed(2)}`).join(' ')+' Z';
+    feats.filter(f=>f.type==='poly').forEach(f=>{
+      const d=pathOf(f.coords),w=f.boundary?2.4:1.6,col=hexRgb(f.color),lum=.299*col.red+.587*col.green+.114*col.blue;
+      page.drawSvgPath(d,{x:bx,y:top,borderColor:lum>.62?rgb(0,0,0):WHITE,borderWidth:w+2.2,borderOpacity:.7});
+      page.drawSvgPath(d,{x:bx,y:top,borderColor:col,borderWidth:w,...(f.boundary||f.fill===false?{}:{color:col,opacity:.32}),...(f.boundary?{borderDashArray:[8,4]}:{})});
+    });
+    const numOf=new Map(),labels=[];let n=0;
+    feats.forEach(f=>{
+      if(f.type==='poly'){if(f.boundary)return;n++;numOf.set(f,n);
+        labels.push({n,x:bx+gx(f.coords.reduce((a,p)=>a+p[1],0)/f.coords.length),y:top-gy(f.coords.reduce((a,p)=>a+p[0],0)/f.coords.length)})}
+      else{n++;numOf.set(f,n);const px=bx+gx(f.coords[0][1]),py=top-gy(f.coords[0][0]);
+        page.drawCircle({x:px,y:py,size:6.4,color:WHITE});page.drawCircle({x:px,y:py,size:4.6,color:hexRgb(f.color)});labels.push({n,x:px+9,y:py+9})}
+    });
+    const badge=(x,yy,t)=>{page.drawCircle({x,y:yy,size:6.6,color:WHITE,borderColor:rgb(.1,.1,.1),borderWidth:.8});const w=F.b.widthOfTextAtSize(String(t),7);page.drawText(String(t),{x:x-w/2,y:yy-2.5,size:7,font:F.b,color:BLACK})};
+    labels.forEach(l=>badge(l.x,l.y,l.n));
+    /* scale bar (feet / miles), north arrow, source note */
+    const target=boxW*.22,cand=[10,20,25,50,100,200,250,500,1000,2000,2500,5000,5280,10560,26400,52800,105600,264000];
+    let ft=cand[0];cand.forEach(c=>{if(c*.3048*sc<=target)ft=c});
+    const len=ft*.3048*sc,lab=ft>=5280?`${+(ft/5280).toFixed(1)} mi`:`${ft} ft`,sx=bx+10,sy=bot+14,lw=Math.max(len,F.n.widthOfTextAtSize(lab,7));
+    page.drawRectangle({x:sx-5,y:sy-6,width:lw+10,height:25,color:WHITE,opacity:.8});
+    page.drawRectangle({x:sx,y:sy,width:len/2,height:4,color:BLACK,borderColor:BLACK,borderWidth:.5});
+    page.drawRectangle({x:sx+len/2,y:sy,width:len/2,height:4,color:WHITE,borderColor:BLACK,borderWidth:.5});
+    page.drawText(lab,{x:sx,y:sy+8,size:7,font:F.n,color:BLACK});
+    const nx=bx+boxW-20;
+    page.drawRectangle({x:nx-13,y:top-44,width:26,height:38,color:WHITE,opacity:.8});
+    page.drawSvgPath('M 0 0 L 6 16 L 0 12 L -6 16 Z',{x:nx,y:top-10,color:BLACK});
+    page.drawText('N',{x:nx-3,y:top-38,size:9,font:F.b,color:BLACK});
+    const src=safe(img?'Imagery (c) Esri, Maxar, Earthstar Geographics, and the GIS User Community':'Schematic map. No imagery was available.'),sw=F.n.widthOfTextAtSize(src,6.2);
+    page.drawRectangle({x:bx+boxW-sw-8,y:bot,width:sw+8,height:10,color:WHITE,opacity:.8});
+    page.drawText(src,{x:bx+boxW-sw-4,y:bot+3,size:6.2,font:F.n,color:rgb(.2,.2,.2)});
+    page.drawRectangle({x:bx,y:bot,width:boxW,height:boxH,borderColor:GREY,borderWidth:.8});
+    /* legend */
+    y=bot-18;
+    page.drawText('Mapped features',{x:M,y,size:10.5,font:F.b,color:BLACK});y-=8;
+    feats.forEach(f=>{
+      const poly=f.type==='poly',nm=f.name||(f.boundary?'Property boundary':poly?'Polygon':'Marker');
+      const runs=[{t:nm,b:true}];
+      if(poly)runs.push({t:` (${areaAcres(f.coords).toFixed(2)} ac)`});
+      if(!f.boundary&&f.species.length)runs.push({nl:1},{t:'Species: ',b:true},{t:f.species.map(short).join(', ')},{t:'  |  Density: ',b:true},{t:f.density||''});
+      if(f.notes)runs.push({nl:1},{t:'Notes: ',b:true},{t:f.notes});
+      const lines=layout(runs,CW-34,8),lh=lineH(8),h=lines.length*lh+7;
+      if(y-h<M+8){newPage()}
+      if(f.boundary)page.drawLine({start:{x:M+1,y:y-9},end:{x:M+21,y:y-9},thickness:2.2,color:hexRgb(f.color),dashArray:[5,3]});
+      else{badge(M+7,y-9,numOf.get(f));page.drawRectangle({x:M+16,y:y-13,width:9,height:9,color:hexRgb(f.color),borderColor:rgb(.3,.3,.3),borderWidth:.5})}
+      lines.forEach((l,i)=>drawLine(l,M+30,y-(i+1)*lh+lh*.22,8,'left',CW-34));
+      y-=h;
+    });
+  }
+  const box=document.createElement('div');box.innerHTML=planForExport();
   [...box.children].forEach(block);
+  if(P.features.length){try{await mapSection()}catch(e){console.error('map section failed',e)}}
   const foot=`Management Plan - ${P.fields.landowner||P.name||''}`;
   pages.forEach((pg,i)=>{
     const t=safe(`${foot}    Page ${i+1} of ${pages.length}`),sz=7.5,wd=F.n.widthOfTextAtSize(t,sz);
@@ -694,7 +801,7 @@ $('bRefresh').onclick=()=>{P.planEdits=null;P.cover={...P.cover};renderPlan();sa
 /* ========================= PROPERTY TAB / PROJECTS ========================= */
 const FIELDS=['landowner','address','county','area','lat','lon','visit','follow','goals','otherprog','by','assist','rdate','cisma','swcd'];
 function loadFields(){
-  FIELDS.forEach(k=>$('f_'+k).value=P.fields[k]||'');
+  FIELDS.forEach(k=>$('f_'+k).value=P.fields[k]||'');updateAreaHint();
   $('programs').innerHTML=PROGRAMS.map((p,i)=>`<div style="padding:6px 0"><label><input type="checkbox" data-p="${i}" ${P.fields.programs[p]?'checked':''}> ${esc(p)}</label> <input type="text" data-pc="${i}" placeholder="date enrolled" value="${esc(P.fields.programs[p]&&P.fields.programs[p]!==true?P.fields.programs[p]:'')}" style="margin-top:4px"></div>`).join('');
   $('ptitle').textContent=P.fields.landowner||P.name;
   $('projsel').innerHTML=S.projects.map(p=>`<option value="${p.id}" ${p.id===P.id?'selected':''}>${esc(p.fields.landowner||p.name)}</option>`).join('');
@@ -840,7 +947,7 @@ async function pushProject(p){
     const refs=[];
     for(const d of (f.photos||[])){const h=await sha(d);if(!S.uploaded[h]){await uploadPhoto(h,d);S.uploaded[h]=1}PHOTO_CACHE[h]=d;refs.push(h)}
     dfeats.push({...f,photos:refs});
-    feats.push({id:f.id,kind:f.type==='poly'?'poly':'marker',species:f.species,density:f.density||null,acres:f.type==='poly'?+areaAcres(f.coords).toFixed(4):0});
+    feats.push({id:f.id,kind:f.type==='poly'?'poly':'marker',species:f.boundary?[]:f.species,density:f.density||null,acres:f.type==='poly'?+areaAcres(f.coords).toFixed(4):0});
   }
   const data={name:p.name,fields:p.fields,cover:p.cover||{},planEdits:p.planEdits||null,planEditsFor:p.planEditsFor||null,features:dfeats};
   const ts=await api('/rest/v1/rpc/save_property',{method:'POST',body:{p_id:p.id,p_name:p.fields.landowner||p.name,p_county:p.fields.county||null,p_data:data,p_features:feats}});
@@ -941,8 +1048,8 @@ function localTotals(q){
   const per={},u={acres:0,polygons:0,markers:0,props:new Set()};
   S.projects.forEach(p=>p.features.forEach(f=>{
     const poly=f.type==='poly',ac=poly?areaAcres(f.coords):0;
-    f.species.forEach(sp=>{const o=per[sp]=per[sp]||{species:sp,acres:0,polygons:0,markers:0,props:new Set()};o.acres+=ac;poly?o.polygons++:o.markers++;o.props.add(p.id)});
-    if(q&&f.species.some(x=>x.toLowerCase().includes(q))){u.acres+=ac;poly?u.polygons++:u.markers++;u.props.add(p.id)}
+    (f.boundary?[]:f.species).forEach(sp=>{const o=per[sp]=per[sp]||{species:sp,acres:0,polygons:0,markers:0,props:new Set()};o.acres+=ac;poly?o.polygons++:o.markers++;o.props.add(p.id)});
+    if(q&&!f.boundary&&f.species.some(x=>x.toLowerCase().includes(q))){u.acres+=ac;poly?u.polygons++:u.markers++;u.props.add(p.id)}
   }));
   const rows=Object.values(per).map(o=>({species:o.species,acres:o.acres,polygons:o.polygons,markers:o.markers,properties:o.props.size}));
   return {rows,sum:q?{acres:u.acres,polygons:u.polygons,markers:u.markers,properties:u.props.size}:null};
@@ -1026,7 +1133,7 @@ function show(t){
   if(t==='species'){renderAddCard();renderSpeciesTab()}
   if(t==='plan')renderPlan();
   if(t==='totals')renderTotals();
-  if(t==='project'){renderCloudCard();kvGet('lastBackup').then(showLastBackup)}
+  if(t==='project'){updateAreaHint();renderCloudCard();kvGet('lastBackup').then(showLastBackup)}
 }
 document.querySelector('nav').onclick=e=>{const t=e.target.dataset.t;if(t)show(t)};
 $('spq').oninput=renderSpeciesTab;
