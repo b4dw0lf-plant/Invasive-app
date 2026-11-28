@@ -3,6 +3,6 @@
      url     = the "Project URL"
      anonKey = the "anon public" key (never the "service_role" key)            */
 window.CLOUD = {
-  url: '',
+  url: 'https:///jaytuvfbkcdfrdufahas.supabase.co',
   anonKey: 'sb_publishable_Pkk5swUEDgnPV_7oIE9wtQ_uzfqXYoQ'
 };
